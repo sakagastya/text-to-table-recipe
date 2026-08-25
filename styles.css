@@ -1,6 +1,13 @@
 :root {
   --accent: #059669;
   --accent-soft: #d1fae5;
+  --accent-border: rgb(118, 197, 173);
+  --accent-ink: rgb(8, 119, 89);
+  --accent-code: rgb(4, 105, 74);
+  --accent-dark: rgb(4, 132, 92);
+  --accent-ring: rgba(5, 150, 105, .18);
+  --accent-ring2: rgba(5, 150, 105, .3);
+  --accent-done: rgba(5, 150, 105, .12);
   --canvas: #f4f5f1;
   --panel: #ffffff;
   --panel-alt: #fafaf8;
@@ -115,7 +122,7 @@ select { cursor: pointer; }
 
 input:focus, select:focus, textarea:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 textarea { resize: vertical; line-height: 1.5; }
@@ -134,7 +141,7 @@ textarea { resize: vertical; line-height: 1.5; }
   font-family: var(--mono);
   font-size: 10.5px;
   background: var(--accent-soft);
-  color: color-mix(in srgb, var(--accent) 70%, #000);
+  color: var(--accent-code);
   border-radius: 5px;
   padding: 2px 6px;
 }
@@ -162,7 +169,7 @@ textarea { resize: vertical; line-height: 1.5; }
   color: #fff;
 }
 
-.btn.primary:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.btn.primary:hover { background: var(--accent-dark); }
 
 .btn.ghost { background: transparent; border-style: dashed; color: var(--muted); font-weight: 500; }
 .btn.subtle { padding: 6px 10px; font-size: 12px; align-self: flex-start; }
@@ -238,7 +245,7 @@ input[type="color"] {
   justify-content: space-between;
   gap: 16px;
   padding: 12px 24px;
-  background: color-mix(in srgb, var(--canvas) 82%, #fff);
+  background: rgb(246, 247, 244);
   border-bottom: 1px solid var(--line);
   backdrop-filter: blur(6px);
   position: sticky;
@@ -276,7 +283,7 @@ input[type="color"] {
 
 .switch input:checked + .knob { background: var(--accent); }
 .switch input:checked + .knob::before { transform: translateX(18px); }
-.switch input:focus-visible + .knob { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+.switch input:focus-visible + .knob { box-shadow: 0 0 0 3px var(--accent-ring2); }
 
 /* ---------- Canvas & Tables ---------- */
 
@@ -298,7 +305,7 @@ input[type="color"] {
 .recipe-sub {
   font-size: 15px;
   font-weight: 600;
-  color: color-mix(in srgb, var(--accent) 75%, var(--ink));
+  color: var(--accent-ink);
   margin: 22px 0 8px;
 }
 
@@ -312,7 +319,7 @@ input[type="color"] {
 
 .cf-table td {
   border: 1px solid var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 55%, #fff);
+  border-color: var(--accent-border);
   padding: var(--cf-pad);
   font-size: var(--cf-font);
   line-height: 1.4;
@@ -398,7 +405,7 @@ td.vert {
 #canvas td.done {
   opacity: .35;
   text-decoration: line-through;
-  background: repeating-linear-gradient(-45deg, transparent 0 6px, color-mix(in srgb, var(--accent) 12%, transparent) 6px 12px);
+  background: repeating-linear-gradient(-45deg, transparent 0 6px, var(--accent-done) 6px 12px);
 }
 
 .canvas-empty {

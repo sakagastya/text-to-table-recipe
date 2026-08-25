@@ -59,7 +59,8 @@ const I18N = {
     movedUp: 'Group moved up.', movedDown: 'Group moved down.',
     navUp: 'Move group up', navDown: 'Move group down',
     modelSwitch: 'Gemini model switched to ', busy: ' busy \u2014 retrying\u2026',
-    noModels: 'This Gemini API key has no text-generation models available.'
+    noModels: 'This Gemini API key has no text-generation models available.',
+    regenHint: 'UI language changed. The table text comes from the DSL \u2014 paste raw text + API key and it will re-extract automatically.'
   },
   id: {
     tagline: 'Teks resep \u2192 matriks memasak editorial',
@@ -90,7 +91,8 @@ const I18N = {
     movedUp: 'Grup naik.', movedDown: 'Grup turun.',
     navUp: 'Naikkan grup', navDown: 'Turunkan grup',
     modelSwitch: 'Model Gemini beralih ke ', busy: ' sibuk \u2014 mencoba ulang\u2026',
-    noModels: 'Kunci API Gemini ini tidak memiliki model teks yang tersedia.'
+    noModels: 'Kunci API Gemini ini tidak memiliki model teks yang tersedia.',
+    regenHint: 'Bahasa antarmuka berubah. Teks tabel berasal dari DSL \u2014 tempel teks mentah + kunci API dan ekstraksi ulang berjalan otomatis.'
   }
 };
 
@@ -918,12 +920,36 @@ function savePNG() {
 
 /* ---------------- theme & appearance ---------------- */
 
+function hexRgb(hex) {
+  let h = String(hex).replace('#', '');
+  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+  const v = parseInt(h, 16) || 0;
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+function mixHex(a, b, pct) {
+  const A = hexRgb(a);
+  const B = hexRgb(b);
+  return 'rgb(' + A.map((v, i) => Math.round(v * pct + B[i] * (1 - pct))).join(', ') + ')';
+}
+
+function rgbaHex(a, alpha) {
+  return 'rgba(' + hexRgb(a).join(', ') + ', ' + alpha + ')';
+}
+
 function applyTheme() {
   const root = document.documentElement;
-  const t = THEMES[state.theme] || THEMES.emerald;
-  const accent = state.accent || t.accent;
+  const th = THEMES[state.theme] || THEMES.emerald;
+  const accent = state.accent || th.accent;
   root.style.setProperty('--accent', accent);
-  root.style.setProperty('--accent-soft', state.accent ? accent + '26' : t.soft);
+  root.style.setProperty('--accent-soft', state.accent ? rgbaHex(accent, 0.15) : th.soft);
+  root.style.setProperty('--accent-border', mixHex(accent, '#ffffff', 0.55));
+  root.style.setProperty('--accent-ink', mixHex(accent, '#101828', 0.75));
+  root.style.setProperty('--accent-code', mixHex(accent, '#000000', 0.70));
+  root.style.setProperty('--accent-dark', mixHex(accent, '#000000', 0.88));
+  root.style.setProperty('--accent-ring', rgbaHex(accent, 0.18));
+  root.style.setProperty('--accent-ring2', rgbaHex(accent, 0.30));
+  root.style.setProperty('--accent-done', rgbaHex(accent, 0.12));
   root.style.setProperty('--cf-font', state.font + 'px');
   root.style.setProperty('--cf-pad', state.pad + 'px');
 }
@@ -1038,6 +1064,8 @@ function bind() {
     applyI18n();
     render();
     saveState();
+    if (els.rawText.value.trim() && els.apiKey.value.trim()) generate();
+    else toast(t('regenHint'));
   });
   els.orientSel.addEventListener('change', () => { state.orient = els.orientSel.value; render(); saveState(); });
   els.ingDir.addEventListener('change', () => { state.ingDir = els.ingDir.value; render(); saveState(); });

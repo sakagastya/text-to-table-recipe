@@ -619,22 +619,44 @@ async function discoverGeminiModel(key) {
   return usable[0];
 }
 
+const GEMINI_TRANSIENT = new Set([429, 500, 502, 503, 504]);
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function withRetry(fn) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!GEMINI_TRANSIENT.has(err.status) || attempt >= 2) throw err;
+      toast('Model busy (' + err.status + ') \u2014 retrying\u2026');
+      await sleep(1200 * attempt);
+    }
+  }
+}
+
 async function callGemini(text, key) {
   const tried = [...new Set([geminiModel, ...GEMINI_PREFERRED].filter(Boolean))];
+  let lastErr = null;
   for (const model of tried) {
     try {
-      const out = await geminiGenerate(model, key, text);
+      const out = await withRetry(() => geminiGenerate(model, key, text));
       geminiModel = model;
       return out;
     } catch (err) {
-      if (err.status !== 404) throw err;
+      if (err.status !== 404 && !GEMINI_TRANSIENT.has(err.status)) throw err;
+      lastErr = err;
     }
   }
-  const model = await discoverGeminiModel(key);
-  const out = await geminiGenerate(model, key, text);
-  geminiModel = model;
-  toast('Gemini model switched to ' + model + '.');
-  return out;
+  try {
+    const model = await discoverGeminiModel(key);
+    const out = await withRetry(() => geminiGenerate(model, key, text));
+    geminiModel = model;
+    toast('Gemini model switched to ' + model + '.');
+    return out;
+  } catch (err) {
+    throw lastErr || err;
+  }
 }
 
 async function callAI(text, provider, key) {

@@ -171,7 +171,7 @@ Write ALL text (title, ingredients, actions, group names) in ${l.label}. Keep un
 
 STRUCTURE: keep the table compact, simple and identical regardless of language - fewest columns possible, short actions (2-6 words), [Groups] only for genuinely parallel prep work, one final merge action. The same recipe must yield the same table shape in every language.
 
-SOURCE: use ONLY recipe facts explicitly present in the user text (ingredients with amounts, cooking steps). Ignore ads, video titles, suggestions, related links, comments and navigation. If the text contains no usable recipe, reply with exactly: NO_RECIPE
+SOURCE: use ONLY recipe facts explicitly present in the user text (ingredients with amounts, cooking steps). Ignore ads, video titles, suggestions, related links, comments and navigation. If the text contains neither ingredients nor steps, reply with exactly: NO_RECIPE. If only an ingredient list is present, still build the table from those ingredients and end with one simple cook-or-serve action.
 
 DSL RULES:
 - Title: <name>                     first line
@@ -898,22 +898,50 @@ function cleanFetchText(text) {
     .trim();
 }
 
+function extractYouTubeMeta(html) {
+  const s = String(html || '');
+  const titleM = s.match(/<title>([^<]*)<\/title>/i);
+  const descM = s.match(/"shortDescription":"((?:[^"\\]|\\.)*)"/);
+  let desc = '';
+  if (descM) {
+    try { desc = JSON.parse('"' + descM[1] + '"'); }
+    catch (e) {
+      desc = descM[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+    }
+  }
+  const title = titleM ? titleM[1].replace(/\s*-\s*YouTube\s*$/i, '').trim() : '';
+  return { title: title, desc: desc.trim() };
+}
+
 async function fetchReadable(rawUrl) {
   const url = canonicalUrl(rawUrl);
   const vid = videoId(url);
+  const watch = vid ? 'https://www.youtube.com/watch?v=' + vid : '';
   const attempts = [];
   if (vid) {
-    attempts.push('https://r.jina.ai/https://www.youtube.com/watch?v=' + vid);
-    attempts.push('https://r.jina.ai/https://youtu.be/' + vid);
+    attempts.push({ u: 'https://r.jina.ai/' + watch, k: 'text' });
+    attempts.push({ u: 'https://r.jina.ai/https://youtu.be/' + vid, k: 'text' });
+    attempts.push({ u: 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(watch), k: 'yt' });
+    attempts.push({ u: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(watch), k: 'yt' });
   }
-  attempts.push('https://r.jina.ai/' + url);
-  attempts.push('https://api.allorigins.win/raw?url=' + encodeURIComponent(url));
+  attempts.push({ u: 'https://r.jina.ai/' + url, k: 'text' });
+  attempts.push({ u: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url), k: 'raw' });
+  attempts.push({ u: 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url), k: 'raw' });
+  const seen = new Set();
   let lastErr = null;
-  for (const target of attempts) {
+  for (const a of attempts) {
+    if (seen.has(a.u)) continue;
+    seen.add(a.u);
     try {
-      const res = await fetch(target, { headers: { 'Accept': 'text/plain, text/html, */*' } });
+      const res = await fetch(a.u, { headers: { 'Accept': 'text/plain, text/html, */*' } });
       if (!res.ok) { lastErr = new Error('HTTP ' + res.status); continue; }
-      const clean = cleanFetchText(await res.text());
+      const body = await res.text();
+      if (a.k === 'yt') {
+        const meta = extractYouTubeMeta(body);
+        if (!meta.desc || meta.desc.length < 40) { lastErr = new Error('no description in page HTML'); continue; }
+        return ((meta.title ? 'Video title: ' + meta.title + '\n\n' : '') + meta.desc).slice(0, 24000);
+      }
+      const clean = cleanFetchText(body);
       if (clean.length < 40) { lastErr = new Error('no readable text'); continue; }
       if (SHELL_MARKERS.some((re) => re.test(clean))) { lastErr = new Error('page blocked the reader'); continue; }
       return clean.slice(0, 24000);

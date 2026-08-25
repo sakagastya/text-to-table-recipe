@@ -59,7 +59,7 @@ vm.runInContext(`
     parseDSL, buildComponent, layoutComponent, tableHTML,
     scaleText, convertUnits, parseQty, fmtQty, parseIngredientLine,
     buildShoppingList,
-    reorderDslBlocks, wrapWords, looksLikeUrl, canonicalUrl, videoId,
+    reorderDslBlocks, wrapWords, looksLikeUrl, canonicalUrl, videoId, extractYouTubeMeta,
     setOrientation: (v) => { state.orient = v; },
     setPortion: (v) => { state.portion = v; },
     resetDone: () => { doneMap = {}; }
@@ -531,6 +531,16 @@ registerCase('Extra: URL canonicalization for reader proxy', (ok) => {
   ok(E.videoId('https://www.youtube.com/shorts/AbCdEf_-123') === 'AbCdEf_-123', 'shorts video id extracted');
   ok(E.canonicalUrl('https://example.com/recipe?si=1&feature=2&utm=x&b=3') === 'https://example.com/recipe?utm=x&b=3',
     'non-YouTube keeps other params, drops si/feature');
+});
+
+registerCase('Extra: YouTube description extraction from page HTML', (ok) => {
+  const ytHtml = '<title>CARA BUAT BOLA UBI KOPONG - YouTube</title><script>var p={"shortDescription":"Bola ubi kopong lembut\\n250 gr ubi cilembu\\n35 gr gula halus \\"manis\\"\\n1/4 sdt garam"};</script>';
+  const meta = E.extractYouTubeMeta(ytHtml);
+  ok(meta.title === 'CARA BUAT BOLA UBI KOPONG', `title extracted without " - YouTube" suffix (got "${meta.title}")`);
+  ok(meta.desc === 'Bola ubi kopong lembut\n250 gr ubi cilembu\n35 gr gula halus "manis"\n1/4 sdt garam',
+    'escaped \\n and \\" in shortDescription decoded correctly');
+  const empty = E.extractYouTubeMeta('<html><body>consent page</body></html>');
+  ok(empty.desc === '' && empty.title === '', 'missing shortDescription yields empty meta');
 });
 
 /* ---------------- report ---------------- */

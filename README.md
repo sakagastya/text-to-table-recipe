@@ -5,6 +5,7 @@ Convert raw recipe text into a sleek, editorial **"Cooking for Engineers" tabula
 ## Features
 
 - **AI Auto-Extract** — paste a messy blog post, bring your own Gemini or OpenAI API key (stored only in your browser's `localStorage`), and the model returns pure DSL.
+- **Invent with AI** — no source at hand? Switch the input mode, describe what you feel like eating ("quick spicy ayam geprek, 2 portions"), and the LLM invents a cookable recipe straight into a table.
 - **DSL Code Studio** — live editor with instant re-rendering.
 - **Track reordering** — hover a parallel branch's first row and use the ▲ ▼ controls to move whole group blocks within the DSL; merges resolve by name, so table topology is never broken.
 - **Portion multiplier** — ½× / 1× / 2× / 5×, scales every quantity in real time.

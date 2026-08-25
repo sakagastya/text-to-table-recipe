@@ -60,6 +60,7 @@ vm.runInContext(`
     scaleText, convertUnits, parseQty, fmtQty, parseIngredientLine,
     buildShoppingList,
     reorderDslBlocks, wrapWords, looksLikeUrl, canonicalUrl, videoId, extractYouTubeMeta,
+    inventPrompt,
     setOrientation: (v) => { state.orient = v; },
     setPortion: (v) => { state.portion = v; },
     resetDone: () => { doneMap = {}; }
@@ -541,6 +542,13 @@ registerCase('Extra: YouTube description extraction from page HTML', (ok) => {
     'escaped \\n and \\" in shortDescription decoded correctly');
   const empty = E.extractYouTubeMeta('<html><body>consent page</body></html>');
   ok(empty.desc === '' && empty.title === '', 'missing shortDescription yields empty meta');
+});
+
+registerCase('Extra: Invent-mode prompt', (ok) => {
+  const p = E.inventPrompt('id');
+  ok(p.includes('Bahasa Indonesia'), 'invent prompt uses the selected language');
+  ok(p.includes('(wait)') && p.includes('merge ALL groups'), 'invent prompt enforces hold-back + final-merge rules');
+  ok(p.includes('g, mL, tsp, Tbs'), 'invent prompt enforces metric units');
 });
 
 /* ============================================================

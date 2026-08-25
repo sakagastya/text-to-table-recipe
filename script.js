@@ -33,6 +33,9 @@ const I18N = {
   en: {
     tagline: 'Recipe text \u2192 editorial cooking matrix',
     p1: 'AI Auto-Extract', provider: 'Provider',
+    modeLabel: 'Input mode', modeSource: 'From link or text', modeInvent: 'Invent with AI',
+    inventPh: 'Describe what you want to cook\u2026 e.g. "quick spicy ayam geprek, 2 portions, no coconut"',
+    needIdea: 'Describe the dish you want first.',
     apiKey: 'API key', apiKeyNote: '(stored only in your browser)',
     keyPh: 'Paste your key\u2026',
     rawText: 'Recipe link or raw text',
@@ -70,6 +73,9 @@ const I18N = {
   id: {
     tagline: 'Teks resep \u2192 matriks memasak editorial',
     p1: 'Ekstraksi Otomatis AI', provider: 'Penyedia',
+    modeLabel: 'Mode input', modeSource: 'Dari tautan atau teks', modeInvent: 'Karang dengan AI',
+    inventPh: 'Jelaskan hidangan yang ingin dibuat\u2026 mis. "ayam geprek pedas cepat, 2 porsi, tanpa santan"',
+    needIdea: 'Jelaskan hidangan yang ingin dibuat dulu.',
     apiKey: 'Kunci API', apiKeyNote: '(hanya tersimpan di browser Anda)',
     keyPh: 'Tempel kunci Anda\u2026',
     rawText: 'Tautan resep atau teks mentah',
@@ -194,6 +200,14 @@ Translate ONLY the human-readable words (title, ingredients, actions, group name
 Keep the DSL structure EXACTLY: same lines, same order, same groups, same merge references, same quantities and units.`;
 }
 
+function inventPrompt(lang) {
+  const l = LANGS[lang] || LANGS.en;
+  return `You are a recipe creator for a tabular "Cooking for Engineers" cooking-matrix app.
+The user describes what they want to eat. Invent ONE realistic, cookable recipe that matches their description and reply with ONLY the DSL - no markdown, no commentary.
+Write ALL text (title, ingredients, actions, group names) in ${l.label}. Keep unit symbols g, mL, tsp, Tbs. Quantities must be realistic and metric.
+STRUCTURE: compact - fewest columns, short actions (2-6 words), [Groups] only for genuinely parallel prep work, hold-back marker exactly (wait), and the LAST action must merge ALL groups.`;
+}
+
 const $ = (s) => document.querySelector(s);
 
 const els = {};
@@ -205,9 +219,10 @@ const state = {
   accent: '',
   font: 14,
   pad: 10,
-  cooking: false,
-  provider: 'gemini',
-  lang: 'en',
+    cooking: false,
+    provider: 'gemini',
+    aiMode: 'source',
+    lang: 'en',
   orient: 'h',
   ingDir: 'h',
   actDir: 'auto',
@@ -974,10 +989,14 @@ async function callAI(text, provider, key, sys) {
 async function generate() {
   let raw = els.rawText.value.trim();
   const key = els.apiKey.value.trim();
-  if (!raw) return toast(t('needText'));
   if (!key) return toast(t('needKey'));
+  if (state.aiMode === 'invent') {
+    if (!raw) return toast(t('needIdea'));
+  } else if (!raw) {
+    return toast(t('needText'));
+  }
   els.generateBtn.disabled = true;
-  if (looksLikeUrl(raw)) {
+  if (state.aiMode !== 'invent' && looksLikeUrl(raw)) {
     els.generateBtn.textContent = t('fetching');
     try {
       raw = await fetchReadable(/^https?:\/\//i.test(raw) ? raw : 'https://' + raw);
@@ -992,9 +1011,9 @@ async function generate() {
   }
   els.generateBtn.textContent = t('extracting');
   try {
-    const out = await callAI(raw, state.provider, key);
+    const out = await callAI(raw, state.provider, key, state.aiMode === 'invent' ? inventPrompt(state.lang) : null);
     const clean = out.replace(/```[a-z]*\s*/gi, '').replace(/```/g, '').trim();
-    if (!clean || /^NO_RECIPE\b/i.test(clean)) throw new Error(t('noRecipeMsg'));
+    if (!clean || (state.aiMode !== 'invent' && /^NO_RECIPE\b/i.test(clean))) throw new Error(t('noRecipeMsg'));
     state.dsl = clean;
     els.dsl.value = clean;
     loadDone();
@@ -1140,6 +1159,7 @@ function saveState() {
       pad: state.pad,
       cooking: state.cooking,
       provider: state.provider,
+      aiMode: state.aiMode,
       lang: state.lang,
       orient: state.orient,
       ingDir: state.ingDir,
@@ -1162,6 +1182,7 @@ function loadState() {
   const dsl = localStorage.getItem('mk.dsl');
   state.dsl = dsl === null ? DEFAULT_DSL : dsl;
   if (!LANGS[state.lang]) state.lang = 'en';
+  if (state.aiMode !== 'invent') state.aiMode = 'source';
   if (state.orient !== 'v') state.orient = 'h';
   if (state.ingDir !== 'v') state.ingDir = 'h';
   if (!['auto', 'h', 'v'].includes(state.actDir)) state.actDir = 'auto';
@@ -1214,6 +1235,12 @@ function bind() {
   els.generateBtn.addEventListener('click', generate);
 
   els.provider.addEventListener('change', () => { state.provider = els.provider.value; saveState(); });
+  els.aiMode.addEventListener('change', () => {
+    state.aiMode = els.aiMode.value === 'invent' ? 'invent' : 'source';
+    els.rawText.dataset.i18nPh = state.aiMode === 'invent' ? 'inventPh' : 'rawTextPh';
+    applyI18n();
+    saveState();
+  });
   els.outputLang.addEventListener('change', () => {
     state.lang = els.outputLang.value;
     applyI18n();
@@ -1266,6 +1293,7 @@ function init() {
     rawText: $('#rawText'),
     apiKey: $('#apiKey'),
     provider: $('#provider'),
+    aiMode: $('#aiMode'),
     outputLang: $('#outputLang'),
     orientSel: $('#orientSel'),
     ingDir: $('#ingDir'),
@@ -1296,6 +1324,8 @@ function init() {
   els.rawText.value = state.rawText || '';
   els.apiKey.value = state.apiKey || '';
   els.provider.value = state.provider;
+  els.aiMode.value = state.aiMode;
+  els.rawText.dataset.i18nPh = state.aiMode === 'invent' ? 'inventPh' : 'rawTextPh';
   els.outputLang.value = state.lang;
   els.orientSel.value = state.orient;
   els.ingDir.value = state.ingDir;

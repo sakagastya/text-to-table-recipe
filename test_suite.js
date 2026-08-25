@@ -60,7 +60,7 @@ vm.runInContext(`
     scaleText, convertUnits, parseQty, fmtQty, parseIngredientLine,
     buildShoppingList,
     reorderDslBlocks, wrapWords, looksLikeUrl, canonicalUrl, videoId, extractYouTubeMeta,
-    inventPrompt,
+    inventPrompt, extractDSL,
     setOrientation: (v) => { state.orient = v; },
     setPortion: (v) => { state.portion = v; },
     resetDone: () => { doneMap = {}; }
@@ -551,6 +551,15 @@ registerCase('Extra: Invent-mode prompt', (ok) => {
   ok(p.includes('g, mL, tsp, Tbs'), 'invent prompt enforces metric units');
 });
 
+registerCase('Extra: extractDSL strips AI prose', (ok) => {
+  const messy = 'Berikut resep yang saya buat untuk Anda:\n\nTitle: Test\n[A]\n- 100 g ayam\n> masak\n\nSemoga bermanfaat! Selamat mencoba.';
+  ok(E.extractDSL(messy) === 'Title: Test\n[A]\n- 100 g ayam\n> masak', 'prose before and after the DSL removed');
+  const fenced = 'Sure!\n```dsl\nTitle: F\n- 1 tsp salt\n```\nEnjoy your meal.';
+  ok(E.extractDSL(fenced) === 'Title: F\n- 1 tsp salt', 'fenced DSL block extracted cleanly');
+  ok(E.extractDSL('Sorry, I cannot help with that request.') === '', 'pure prose yields empty string');
+  ok(E.extractDSL('Title: Only\n> do step') === 'Title: Only\n> do step', 'clean DSL passes through untouched');
+});
+
 /* ============================================================
    CASE 9 — Translated hold-back marker + full final merge
    ============================================================ */
@@ -570,6 +579,28 @@ registerCase('Case 9: Translated hold-back marker (tunggu)', (ok) => {
 
   const upper = build('Title: U\n[A]\n- x\n> (WAIT)\n> do x');
   ok(!upper.html.includes('WAIT'), '(WAIT) recognized case-insensitively');
+});
+
+/* ============================================================
+   CASE 10 — Malformed DSL auto-repair (missing prefixes)
+   ============================================================ */
+
+registerCase('Case 10: Malformed DSL auto-repair (missing prefixes)', (ok) => {
+  E.setPortion(1); E.resetDone();
+  const dsl = 'Title: T\n[Bumbu]\n150 g onion\n1/2 tsp salt\n-- blend\n[Daging]\n1000 g beef\n-- cut\n[Utama]\n2000 mL coconut milk\n(wait)\n> boil milk\n-- add beef (Bumbu, Daging)';
+  const { models, html } = build(dsl);
+  const m = models[0];
+
+  ok(findCell(m, 'ing', 'onion') !== null, 'bare "150 g onion" recovered as ingredient');
+  ok(findCell(m, 'ing', 'salt') !== null, 'bare "1/2 tsp salt" recovered as ingredient');
+  ok(findCell(m, 'ing', 'coconut milk') !== null, 'bare "2000 mL coconut milk" recovered as ingredient');
+  ok(!!findCell(m, 'action', 'blend'), '"-- blend" parsed as action');
+  ok(!!findCell(m, 'action', 'cut'), '"-- cut" parsed as action');
+  const add = findCell(m, 'action', 'add beef');
+  ok(!!add, '"-- add beef (Bumbu, Daging)" parsed as action with group refs');
+  ok(add.rowspan === 3 && add._col === 2, `final merge spans 3 rows at column 2 (got rowspan ${add.rowspan}, col ${add._col})`);
+  ok(!html.includes('- blend') && !html.includes('--'), 'no dash artifacts leak into rendered cells');
+  ok(!html.includes('cf-empty'), 'no gaps in repaired table');
 });
 
 /* ---------------- report ---------------- */

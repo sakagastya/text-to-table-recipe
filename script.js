@@ -180,6 +180,7 @@ STRUCTURE: keep the table compact, simple and identical regardless of language -
 SOURCE: use ONLY recipe facts explicitly present in the user text (ingredients with amounts, cooking steps). Ignore ads, video titles, suggestions, related links, comments and navigation. If the text contains neither ingredients nor steps, reply with exactly: NO_RECIPE. If only an ingredient list is present, still build the table from those ingredients and end with one simple cook-or-serve action.
 
 DSL RULES:
+STRICT SYNTAX: every ingredient line MUST start with "- " and every action line MUST start with "> ". Never write bare ingredient lines, never use "--" for actions, never write (wait) without the "> " prefix.
 - Title: <name>                     first line
 - ## COMPONENT: <name>              optional; starts a separate modular table
 - [Group Name]                      parallel branch
@@ -197,7 +198,7 @@ function translatePrompt(lang) {
   const l = LANGS[lang] || LANGS.en;
   return `You translate recipe DSL for a cooking-matrix app. Reply with ONLY the translated DSL - no markdown, no commentary.
 Translate ONLY the human-readable words (title, ingredients, actions, group names) into ${l.label}. Keep unit symbols g, mL, tsp, Tbs.
-Keep the DSL structure EXACTLY: same lines, same order, same groups, same merge references, same quantities and units.`;
+Keep the DSL structure EXACTLY: same lines, same order, same groups, same merge references, same quantities and units. Keep the "- " ingredient prefixes and "> " action prefixes exactly as they are.`;
 }
 
 function inventPrompt(lang) {
@@ -205,7 +206,8 @@ function inventPrompt(lang) {
   return `You are a recipe creator for a tabular "Cooking for Engineers" cooking-matrix app.
 The user describes what they want to eat. Invent ONE realistic, cookable recipe that matches their description and reply with ONLY the DSL - no markdown, no commentary.
 Write ALL text (title, ingredients, actions, group names) in ${l.label}. Keep unit symbols g, mL, tsp, Tbs. Quantities must be realistic and metric.
-STRUCTURE: compact - fewest columns, short actions (2-6 words), [Groups] only for genuinely parallel prep work, hold-back marker exactly (wait), and the LAST action must merge ALL groups.`;
+STRUCTURE: compact - fewest columns, short actions (2-6 words), [Groups] only for genuinely parallel prep work, hold-back marker exactly (wait), and the LAST action must merge ALL groups.
+STRICT SYNTAX: every ingredient line MUST start with "- " and every action line MUST start with "> ". Never use "--", never write bare ingredient or (wait) lines.`;
 }
 
 const $ = (s) => document.querySelector(s);
@@ -338,6 +340,21 @@ function parseDSL(src) {
     }
     return comp;
   };
+  const pushAction = (body) => {
+    const text = String(body || '').trim();
+    if (!text) return;
+    const gm = text.match(/\(([^)]+)\)\s*$/);
+    ensureComp().lines.push({
+      type: 'action',
+      body: text,
+      wait: /^\((?:wait|tunggu)\)$/i.test(text),
+      groupsRaw: gm ? gm[1] : null
+    });
+  };
+  const pushIng = (text) => {
+    const t = String(text || '').trim();
+    if (t) ensureComp().lines.push({ type: 'ing', text: t });
+  };
   for (const raw of String(src || '').split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) continue;
@@ -348,26 +365,15 @@ function parseDSL(src) {
       doc.components.push(comp);
       continue;
     }
-    if (line.startsWith('>')) {
-      const body = line.replace(/^>\s*/, '').trim();
-      const gm = body.match(/\(([^)]+)\)\s*$/);
-      ensureComp().lines.push({
-        type: 'action',
-        body,
-        wait: /^\((?:wait|tunggu)\)$/i.test(body),
-        groupsRaw: gm ? gm[1] : null
-      });
-      continue;
-    }
+    if (line.startsWith('>')) { pushAction(line.replace(/^>\s*/, '')); continue; }
+    if (/^--/.test(line)) { pushAction(line.replace(/^--+/, '')); continue; }
+    if (/^\((?:wait|tunggu)\)$/i.test(line)) { pushAction(line); continue; }
     if (line.startsWith('[') && line.endsWith(']')) {
       ensureComp().lines.push({ type: 'group', name: line.slice(1, -1).trim() });
       continue;
     }
-    if (line.startsWith('-')) {
-      const text = line.slice(1).trim();
-      if (text) ensureComp().lines.push({ type: 'ing', text });
-      continue;
-    }
+    if (line.startsWith('-')) { pushIng(line.slice(1)); continue; }
+    if (/^\d/.test(line) && /\s/.test(line)) { pushIng(line); continue; }
   }
   return doc;
 }
@@ -986,6 +992,24 @@ async function callAI(text, provider, key, sys) {
   return data.choices?.[0]?.message?.content || '';
 }
 
+function extractDSL(text) {
+  let s = String(text || '');
+  const fence = s.match(/```[a-z]*\s*([\s\S]*?)```/i);
+  if (fence && /^\s*(Title\s*:|##|\[)/m.test(fence[1])) s = fence[1];
+  const lines = s.split(/\r?\n/);
+  const start = lines.findIndex((l) => /^\s*(Title\s*:|##|\[)/.test(l));
+  if (start > 0) lines.splice(0, start);
+  let end = lines.length;
+  while (end > 1) {
+    const l = lines[end - 1].trim();
+    if (!l) { end--; continue; }
+    if (/^(?:Title\s*:|##|\[|[-*>]|\()/.test(l) || /^\d/.test(l)) break;
+    end--;
+  }
+  const out = lines.slice(0, end).join('\n').trim();
+  return /^(?:Title\s*:|##|\[)/m.test(out) ? out : '';
+}
+
 async function generate() {
   let raw = els.rawText.value.trim();
   const key = els.apiKey.value.trim();
@@ -1012,7 +1036,7 @@ async function generate() {
   els.generateBtn.textContent = t('extracting');
   try {
     const out = await callAI(raw, state.provider, key, state.aiMode === 'invent' ? inventPrompt(state.lang) : null);
-    const clean = out.replace(/```[a-z]*\s*/gi, '').replace(/```/g, '').trim();
+    const clean = extractDSL(out);
     if (!clean || (state.aiMode !== 'invent' && /^NO_RECIPE\b/i.test(clean))) throw new Error(t('noRecipeMsg'));
     state.dsl = clean;
     els.dsl.value = clean;
@@ -1032,7 +1056,7 @@ async function retranslate() {
   els.generateBtn.textContent = t('translating');
   try {
     const out = await callAI(state.dsl, state.provider, els.apiKey.value.trim(), translatePrompt(state.lang));
-    const clean = out.replace(/```[a-z]*\s*/gi, '').replace(/```/g, '').trim();
+    const clean = extractDSL(out);
     if (!clean) throw new Error('empty response');
     state.dsl = clean;
     els.dsl.value = clean;

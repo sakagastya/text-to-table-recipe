@@ -59,7 +59,8 @@ vm.runInContext(`
     parseDSL, buildComponent, layoutComponent, tableHTML,
     scaleText, convertUnits, parseQty, fmtQty, parseIngredientLine,
     buildShoppingList,
-    reorderDslBlocks, wrapWords, looksLikeUrl,
+    reorderDslBlocks, wrapWords, looksLikeUrl, canonicalUrl, videoId, extractYouTubeMeta,
+    inventPrompt, extractDSL,
     setOrientation: (v) => { state.orient = v; },
     setPortion: (v) => { state.portion = v; },
     resetDone: () => { doneMap = {}; }
@@ -519,6 +520,102 @@ registerCase('Extra: Link detection for auto-fetch', (ok) => {
   ok(E.looksLikeUrl('Read this: https://example.com now') === false, 'URL inside a sentence not auto-fetched');
   ok(E.looksLikeUrl('') === false, 'empty string not detected');
   ok(E.looksLikeUrl(null) === false, 'null not detected');
+});
+
+registerCase('Extra: URL canonicalization for reader proxy', (ok) => {
+  const messy = 'https://www.youtube.com/watch?si=nWywYTN3XCodeR6B&v=PnOMVMvsHPY&feature=youtu.be';
+  ok(E.videoId(messy) === 'PnOMVMvsHPY', `video id extracted from messy URL (got ${E.videoId(messy)})`);
+  ok(E.canonicalUrl(messy) === 'https://www.youtube.com/watch?v=PnOMVMvsHPY',
+    `tracking params stripped (got ${E.canonicalUrl(messy)})`);
+  ok(E.canonicalUrl('https://youtu.be/dQw4w9WgXcQ') === 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    'youtu.be short link canonicalized');
+  ok(E.videoId('https://www.youtube.com/shorts/AbCdEf_-123') === 'AbCdEf_-123', 'shorts video id extracted');
+  ok(E.canonicalUrl('https://example.com/recipe?si=1&feature=2&utm=x&b=3') === 'https://example.com/recipe?utm=x&b=3',
+    'non-YouTube keeps other params, drops si/feature');
+});
+
+registerCase('Extra: YouTube description extraction from page HTML', (ok) => {
+  const ytHtml = '<title>CARA BUAT BOLA UBI KOPONG - YouTube</title><script>var p={"shortDescription":"Bola ubi kopong lembut\\n250 gr ubi cilembu\\n35 gr gula halus \\"manis\\"\\n1/4 sdt garam"};</script>';
+  const meta = E.extractYouTubeMeta(ytHtml);
+  ok(meta.title === 'CARA BUAT BOLA UBI KOPONG', `title extracted without " - YouTube" suffix (got "${meta.title}")`);
+  ok(meta.desc === 'Bola ubi kopong lembut\n250 gr ubi cilembu\n35 gr gula halus "manis"\n1/4 sdt garam',
+    'escaped \\n and \\" in shortDescription decoded correctly');
+  const empty = E.extractYouTubeMeta('<html><body>consent page</body></html>');
+  ok(empty.desc === '' && empty.title === '', 'missing shortDescription yields empty meta');
+});
+
+registerCase('Extra: Invent-mode prompt', (ok) => {
+  const p = E.inventPrompt('id');
+  ok(p.includes('Bahasa Indonesia'), 'invent prompt uses the selected language');
+  ok(p.includes('(wait)') && p.includes('merge ALL groups'), 'invent prompt enforces hold-back + final-merge rules');
+  ok(p.includes('g, mL, tsp, Tbs'), 'invent prompt enforces metric units');
+});
+
+registerCase('Extra: extractDSL strips AI prose', (ok) => {
+  const messy = 'Berikut resep yang saya buat untuk Anda:\n\nTitle: Test\n[A]\n- 100 g ayam\n> masak\n\nSemoga bermanfaat! Selamat mencoba.';
+  ok(E.extractDSL(messy) === 'Title: Test\n[A]\n- 100 g ayam\n> masak', 'prose before and after the DSL removed');
+  const fenced = 'Sure!\n```dsl\nTitle: F\n- 1 tsp salt\n```\nEnjoy your meal.';
+  ok(E.extractDSL(fenced) === 'Title: F\n- 1 tsp salt', 'fenced DSL block extracted cleanly');
+  ok(E.extractDSL('Sorry, I cannot help with that request.') === '', 'pure prose yields empty string');
+  ok(E.extractDSL('Title: Only\n> do step') === 'Title: Only\n> do step', 'clean DSL passes through untouched');
+});
+
+/* ============================================================
+   CASE 9 — Translated hold-back marker + full final merge
+   ============================================================ */
+
+registerCase('Case 9: Translated hold-back marker (tunggu)', (ok) => {
+  E.setPortion(1); E.resetDone();
+  const dsl = 'Title: T\n[A]\n- a1\n- a2\n> (tunggu)\n> cook a\n[B]\n- b1\n> heat b\n> mix all (A, B)';
+  const { models, html } = build(dsl);
+  const m = models[0];
+
+  ok(!html.includes('tunggu'), '(tunggu) treated as hold-back, not rendered as a cell');
+  const cookA = findCell(m, 'action', 'cook a');
+  ok(!!cookA && cookA._col === 1, `hold-back pushed "cook a" to column 1 (got ${cookA && cookA._col})`);
+  const mix = findCell(m, 'action', 'mix all');
+  ok(!!mix && mix.rowspan === 3 && mix._col === 2, `final merge spans 3 rows at column 2 (got rowspan ${mix && mix.rowspan}, col ${mix && mix._col})`);
+  ok(!html.includes('cf-empty'), 'no gaps in the table');
+
+  const upper = build('Title: U\n[A]\n- x\n> (WAIT)\n> do x');
+  ok(!upper.html.includes('WAIT'), '(WAIT) recognized case-insensitively');
+});
+
+/* ============================================================
+   CASE 10 — Malformed DSL auto-repair (missing prefixes)
+   ============================================================ */
+
+registerCase('Case 10: Malformed DSL auto-repair (missing prefixes)', (ok) => {  E.setPortion(1); E.resetDone();
+  const dsl = 'Title: T\n[Bumbu]\n150 g onion\n1/2 tsp salt\n-- blend\n[Daging]\n1000 g beef\n-- cut\n[Utama]\n2000 mL coconut milk\n(wait)\n> boil milk\n-- add beef (Bumbu, Daging)';
+  const { models, html } = build(dsl);
+  const m = models[0];
+
+  ok(findCell(m, 'ing', 'onion') !== null, 'bare "150 g onion" recovered as ingredient');
+  ok(findCell(m, 'ing', 'salt') !== null, 'bare "1/2 tsp salt" recovered as ingredient');
+  ok(findCell(m, 'ing', 'coconut milk') !== null, 'bare "2000 mL coconut milk" recovered as ingredient');
+  ok(!!findCell(m, 'action', 'blend'), '"-- blend" parsed as action');
+  ok(!!findCell(m, 'action', 'cut'), '"-- cut" parsed as action');
+  const add = findCell(m, 'action', 'add beef');
+  ok(!!add, '"-- add beef (Bumbu, Daging)" parsed as action with group refs');
+  ok(add.rowspan === 3 && add._col === 2, `final merge spans 3 rows at column 2 (got rowspan ${add.rowspan}, col ${add._col})`);
+  ok(!html.includes('- blend') && !html.includes('--'), 'no dash artifacts leak into rendered cells');
+  ok(!html.includes('cf-empty'), 'no gaps in repaired table');
+});
+
+registerCase('Case 11: Arrow actions + re-declared group merge block', (ok) => {
+  E.setPortion(1); E.resetDone();
+  const dsl = 'Title: T\n[A]\n- a1\n- a2\n-> blend\n[B]\n- b1\n-> heat\n----\n[A]\n[B]\n-> combine all\n----\n-> finish';
+  const { models, html } = build(dsl);
+  const m = models[0];
+
+  const blend = findCell(m, 'action', 'blend');
+  ok(!!blend && blend.rowspan === 2, '"-> blend" parsed as action spanning its 2 ingredients');
+  ok(!html.includes('> blend') && !html.includes('---'), 'no arrow or dash artifacts leak into cells');
+  const combine = findCell(m, 'action', 'combine all');
+  ok(!!combine && combine.rowspan === 3, `re-declared [A][B] block triggers merge (rowspan ${combine && combine.rowspan})`);
+  const finish = findCell(m, 'action', 'finish');
+  ok(!!finish && finish.rowspan === 3, 'action after the merge applies to the merged rows');
+  ok(!html.includes('cf-empty'), 'no gaps in the table');
 });
 
 /* ---------------- report ---------------- */

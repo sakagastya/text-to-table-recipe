@@ -105,6 +105,10 @@ body {
 .field > span { font-weight: 600; color: var(--ink); }
 .field > span em { font-style: normal; font-weight: 400; color: var(--muted); }
 
+.lang-top { flex-direction: row; align-items: center; gap: 10px; }
+.lang-top > span { flex: none; font-size: 12px; }
+.lang-top select { width: auto; flex: 1; padding: 6px 10px; font-weight: 600; }
+
 input[type="text"], input[type="password"], select, textarea {
   font-family: var(--sans);
   font-size: 13px;

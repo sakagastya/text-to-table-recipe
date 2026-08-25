@@ -33,6 +33,9 @@ const I18N = {
   en: {
     tagline: 'Recipe text \u2192 editorial cooking matrix',
     p1: 'AI Auto-Extract', provider: 'Provider',
+    modeLabel: 'Input mode', modeSource: 'From link or text', modeInvent: 'Invent with AI',
+    inventPh: 'Describe what you want to cook\u2026 e.g. "quick spicy ayam geprek, 2 portions, no coconut"',
+    needIdea: 'Describe the dish you want first.',
     apiKey: 'API key', apiKeyNote: '(stored only in your browser)',
     keyPh: 'Paste your key\u2026',
     rawText: 'Recipe link or raw text',
@@ -55,6 +58,8 @@ const I18N = {
     needKey: 'Add your API key first \u2014 it never leaves your browser except to call the provider.',
     extracting: 'Creating table\u2026', genOk: 'Cooking table created \u2014 edit the DSL below.', aiErr: 'AI error: ',
     fetching: 'Reading link\u2026', fetchErr: 'Link error: ',
+    noRecipeMsg: 'No usable recipe found at that source (only ads, suggestions or comments). Try a page that actually lists ingredients and steps, or paste the text yourself.',
+    ytBlocked: 'YouTube blocked the text reader for this video. Open the video, copy the ingredients/steps from its description or transcript, and paste them here instead.',
     translating: 'Translating\u2026', transOk: 'Table translated \u2014 structure unchanged.',
     regenHint: 'UI language changed. Add your API key and the current table will be translated (structure stays identical).',
     rendering: 'Rendering PNG\u2026', pngOk: 'PNG saved.', pngFail: 'Export failed: ',
@@ -68,6 +73,9 @@ const I18N = {
   id: {
     tagline: 'Teks resep \u2192 matriks memasak editorial',
     p1: 'Ekstraksi Otomatis AI', provider: 'Penyedia',
+    modeLabel: 'Mode input', modeSource: 'Dari tautan atau teks', modeInvent: 'Karang dengan AI',
+    inventPh: 'Jelaskan hidangan yang ingin dibuat\u2026 mis. "ayam geprek pedas cepat, 2 porsi, tanpa santan"',
+    needIdea: 'Jelaskan hidangan yang ingin dibuat dulu.',
     apiKey: 'Kunci API', apiKeyNote: '(hanya tersimpan di browser Anda)',
     keyPh: 'Tempel kunci Anda\u2026',
     rawText: 'Tautan resep atau teks mentah',
@@ -90,6 +98,8 @@ const I18N = {
     needKey: 'Tambahkan kunci API dulu \u2014 kunci hanya dikirim ke penyedia layanan.',
     extracting: 'Membuat tabel\u2026', genOk: 'Tabel masak dibuat \u2014 sunting DSL di bawah.', aiErr: 'Kesalahan AI: ',
     fetching: 'Membaca tautan\u2026', fetchErr: 'Kesalahan tautan: ',
+    noRecipeMsg: 'Tidak ada resep yang bisa dipakai dari sumber itu (hanya iklan, saran, atau komentar). Coba halaman yang benar-benar menampilkan bahan dan langkah, atau tempel teksnya langsung.',
+    ytBlocked: 'YouTube memblokir pembaca teks untuk video ini. Buka videonya, salin bahan/langkah dari deskripsi atau transkrip, lalu tempel di sini.',
     translating: 'Menerjemahkan\u2026', transOk: 'Tabel diterjemahkan \u2014 struktur tetap sama.',
     regenHint: 'Bahasa antarmuka berubah. Tambahkan kunci API dan tabel saat ini akan diterjemahkan (struktur tetap sama).',
     rendering: 'Merender PNG\u2026', pngOk: 'PNG tersimpan.', pngFail: 'Ekspor gagal: ',
@@ -165,9 +175,12 @@ function systemPrompt(lang) {
 Reply with ONLY the DSL below - no markdown fences, no commentary.
 Write ALL text (title, ingredients, actions, group names) in ${l.label}. Keep unit symbols g, mL, tsp, Tbs.
 
-STRUCTURE: keep the table compact, simple and identical regardless of language - fewest columns possible, short actions (2-6 words), [Groups] only for genuinely parallel prep work, one final merge action. The same recipe must yield the same table shape in every language.
+STRUCTURE: keep the table compact, simple and identical regardless of language - fewest columns possible, short actions (2-6 words), [Groups] only for genuinely parallel prep work. Never translate DSL keywords: the hold-back marker must stay exactly (wait), never (tunggu). To merge groups, name them inside the action like "> masak (A, B, C)" - never re-list [Group] lines to trigger a merge. The LAST action must merge ALL groups so no branch dangles with empty stretched space. The same recipe must yield the same table shape in every language.
+
+SOURCE: use ONLY recipe facts explicitly present in the user text (ingredients with amounts, cooking steps). Ignore ads, video titles, suggestions, related links, comments and navigation. If the text contains neither ingredients nor steps, reply with exactly: NO_RECIPE. If only an ingredient list is present, still build the table from those ingredients and end with one simple cook-or-serve action.
 
 DSL RULES:
+STRICT SYNTAX: every ingredient line MUST start with "- " and every action line MUST start with "> ". Never write bare ingredient lines, never use "--" for actions, never write (wait) without the "> " prefix.
 - Title: <name>                     first line
 - ## COMPONENT: <name>              optional; starts a separate modular table
 - [Group Name]                      parallel branch
@@ -185,7 +198,16 @@ function translatePrompt(lang) {
   const l = LANGS[lang] || LANGS.en;
   return `You translate recipe DSL for a cooking-matrix app. Reply with ONLY the translated DSL - no markdown, no commentary.
 Translate ONLY the human-readable words (title, ingredients, actions, group names) into ${l.label}. Keep unit symbols g, mL, tsp, Tbs.
-Keep the DSL structure EXACTLY: same lines, same order, same groups, same merge references, same quantities and units.`;
+Keep the DSL structure EXACTLY: same lines, same order, same groups, same merge references, same quantities and units. Keep the "- " ingredient prefixes and "> " action prefixes exactly as they are.`;
+}
+
+function inventPrompt(lang) {
+  const l = LANGS[lang] || LANGS.en;
+  return `You are a recipe creator for a tabular "Cooking for Engineers" cooking-matrix app.
+The user describes what they want to eat. Invent ONE realistic, cookable recipe that matches their description and reply with ONLY the DSL - no markdown, no commentary.
+Write ALL text (title, ingredients, actions, group names) in ${l.label}. Keep unit symbols g, mL, tsp, Tbs. Quantities must be realistic and metric.
+STRUCTURE: compact - fewest columns, short actions (2-6 words), [Groups] only for genuinely parallel prep work, hold-back marker exactly (wait), and the LAST action must merge ALL groups.
+STRICT SYNTAX: every ingredient line MUST start with "- " and every action line MUST start with "> ". Never use "--" or "->", never write bare ingredient or (wait) lines.`;
 }
 
 const $ = (s) => document.querySelector(s);
@@ -199,9 +221,10 @@ const state = {
   accent: '',
   font: 14,
   pad: 10,
-  cooking: false,
-  provider: 'gemini',
-  lang: 'en',
+    cooking: false,
+    provider: 'gemini',
+    aiMode: 'source',
+    lang: 'en',
   orient: 'h',
   ingDir: 'h',
   actDir: 'auto',
@@ -342,7 +365,8 @@ function parseDSL(src) {
       doc.components.push(comp);
       continue;
     }
-    if (line.startsWith('>')) { pushAction(line.replace(/^>\s*/, '')); continue; }
+    const arrow = line.match(/^[-]*>\s*(.*)$/);
+    if (arrow) { pushAction(arrow[1]); continue; }
     if (/^--/.test(line)) { pushAction(line.replace(/^--+/, '')); continue; }
     if (/^\((?:wait|tunggu)\)$/i.test(line)) { pushAction(line); continue; }
     if (line.startsWith('[') && line.endsWith(']')) {
@@ -361,6 +385,7 @@ function buildComponent(comp) {
   const rows = [];
   const tracks = new Map([['main', { rows: [], col: 0 }]]);
   const groupOrder = [];
+  let pendingMerge = null;
   let cur = 'main';
 
   const newRow = () => {
@@ -390,6 +415,12 @@ function buildComponent(comp) {
       if (!tracks.has(tok.name)) {
         tracks.set(tok.name, { rows: [], col: 0 });
         groupOrder.push(tok.name);
+        pendingMerge = null;
+      } else if (tracks.get(tok.name).rows.length) {
+        if (!pendingMerge) pendingMerge = new Set();
+        pendingMerge.add(tok.name);
+      } else {
+        pendingMerge = null;
       }
       cur = tok.name;
       continue;
@@ -398,6 +429,7 @@ function buildComponent(comp) {
     const track = tracks.get(cur);
 
     if (tok.type === 'ing') {
+      pendingMerge = null;
       const row = newRow();
       const span = Math.max(track.col, 1);
       row.cells.push({ text: tok.text, colspan: span, rowspan: 1, kind: 'ing' });
@@ -414,6 +446,7 @@ function buildComponent(comp) {
     if (tok.type !== 'action') continue;
 
     if (tok.wait) {
+      pendingMerge = null;
       track.col += 1;
       track.rows.forEach((r) => extendRow(r, Math.max(track.col, 1)));
       continue;
@@ -428,6 +461,11 @@ function buildComponent(comp) {
         text = tok.body.replace(/\([^)]*\)\s*$/, '').trim();
       }
     }
+    if (!groups && pendingMerge && pendingMerge.size >= 2) {
+      const names = [...pendingMerge];
+      if (names.every((n) => tracks.has(n))) groups = names.map((n) => tracks.get(n));
+    }
+    pendingMerge = null;
 
     if (groups) {
       const actionCol = Math.max(1, ...groups.map((g) => g.col));
@@ -854,30 +892,100 @@ function looksLikeUrl(s) {
   return /^(https?:\/\/|www\.)[^\s]+$/i.test(String(s || '').trim());
 }
 
-const READERS = [
-  (u) => 'https://r.jina.ai/' + u,
-  (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u)
-];
+function videoId(url) {
+  const s = String(url || '');
+  let m = s.match(/[?&]v=([\w-]{6,})/);
+  if (m) return m[1];
+  m = s.match(/(?:shorts|embed)\/([\w-]{6,})/);
+  if (m) return m[1];
+  m = s.match(/youtu\.be\/([\w-]{6,})/);
+  return m ? m[1] : '';
+}
 
-async function fetchReadable(url) {
+function canonicalUrl(url) {
+  const s = String(url || '').trim();
+  try {
+    const u = new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s);
+    if (/(^|\.)youtube\.com$/i.test(u.hostname)) {
+      const v = u.searchParams.get('v');
+      if (v) return 'https://www.youtube.com/watch?v=' + v;
+      const m = u.pathname.match(/\/(?:shorts|embed)\/([\w-]{6,})/);
+      if (m) return 'https://www.youtube.com/watch?v=' + m[1];
+    }
+    if (/^youtu\.be$/i.test(u.hostname)) return 'https://www.youtube.com/watch?v=' + u.pathname.slice(1);
+    u.searchParams.delete('si');
+    u.searchParams.delete('feature');
+    return u.toString();
+  } catch (e) {
+    return s;
+  }
+}
+
+const SHELL_MARKERS = [/Target URL returned error/i, /Tap to unmute/i, /playback doesn.{1,3}t begin shortly/i];
+
+function cleanFetchText(text) {
+  return String(text || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
+function extractYouTubeMeta(html) {
+  const s = String(html || '');
+  const titleM = s.match(/<title>([^<]*)<\/title>/i);
+  const descM = s.match(/"shortDescription":"((?:[^"\\]|\\.)*)"/);
+  let desc = '';
+  if (descM) {
+    try { desc = JSON.parse('"' + descM[1] + '"'); }
+    catch (e) {
+      desc = descM[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+    }
+  }
+  const title = titleM ? titleM[1].replace(/\s*-\s*YouTube\s*$/i, '').trim() : '';
+  return { title: title, desc: desc.trim() };
+}
+
+async function fetchReadable(rawUrl) {
+  const url = canonicalUrl(rawUrl);
+  const vid = videoId(url);
+  const watch = vid ? 'https://www.youtube.com/watch?v=' + vid : '';
+  const attempts = [];
+  if (vid) {
+    attempts.push({ u: 'https://r.jina.ai/' + watch, k: 'text' });
+    attempts.push({ u: 'https://r.jina.ai/https://youtu.be/' + vid, k: 'text' });
+    attempts.push({ u: 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(watch), k: 'yt' });
+    attempts.push({ u: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(watch), k: 'yt' });
+  }
+  attempts.push({ u: 'https://r.jina.ai/' + url, k: 'text' });
+  attempts.push({ u: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url), k: 'raw' });
+  attempts.push({ u: 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url), k: 'raw' });
+  const seen = new Set();
   let lastErr = null;
-  for (const make of READERS) {
+  for (const a of attempts) {
+    if (seen.has(a.u)) continue;
+    seen.add(a.u);
     try {
-      const res = await fetch(make(url), { headers: { 'Accept': 'text/plain, text/html, */*' } });
+      const res = await fetch(a.u, { headers: { 'Accept': 'text/plain, text/html, */*' } });
       if (!res.ok) { lastErr = new Error('HTTP ' + res.status); continue; }
-      const text = await res.text();
-      const clean = text
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/[ \t]+/g, ' ')
-        .trim();
-      if (clean.length < 40) { lastErr = new Error('no readable text at that link'); continue; }
+      const body = await res.text();
+      if (a.k === 'yt') {
+        const meta = extractYouTubeMeta(body);
+        if (!meta.desc || meta.desc.length < 40) { lastErr = new Error('no description in page HTML'); continue; }
+        return ((meta.title ? 'Video title: ' + meta.title + '\n\n' : '') + meta.desc).slice(0, 24000);
+      }
+      const clean = cleanFetchText(body);
+      if (clean.length < 40) { lastErr = new Error('no readable text'); continue; }
+      if (SHELL_MARKERS.some((re) => re.test(clean))) { lastErr = new Error('page blocked the reader'); continue; }
       return clean.slice(0, 24000);
     } catch (err) {
       lastErr = err;
     }
   }
+  if (vid) throw new Error(t('ytBlocked'));
   throw lastErr || new Error('link could not be read');
 }
 
@@ -920,10 +1028,14 @@ function extractDSL(text) {
 async function generate() {
   let raw = els.rawText.value.trim();
   const key = els.apiKey.value.trim();
-  if (!raw) return toast(t('needText'));
   if (!key) return toast(t('needKey'));
+  if (state.aiMode === 'invent') {
+    if (!raw) return toast(t('needIdea'));
+  } else if (!raw) {
+    return toast(t('needText'));
+  }
   els.generateBtn.disabled = true;
-  if (looksLikeUrl(raw)) {
+  if (state.aiMode !== 'invent' && looksLikeUrl(raw)) {
     els.generateBtn.textContent = t('fetching');
     try {
       raw = await fetchReadable(/^https?:\/\//i.test(raw) ? raw : 'https://' + raw);
@@ -960,26 +1072,6 @@ async function retranslate() {
   try {
     const out = await callAI(state.dsl, state.provider, els.apiKey.value.trim(), translatePrompt(state.lang));
     const clean = extractDSL(out);
-    if (!clean) throw new Error('empty response');
-    state.dsl = clean;
-    els.dsl.value = clean;
-    loadDone();
-    render();
-    saveState();
-    toast(t('genOk'));
-  } catch (err) {
-    toast(t('aiErr') + err.message);
-  }
-  els.generateBtn.disabled = false;
-  els.generateBtn.textContent = t('genBtn');
-}
-
-async function retranslate() {
-  els.generateBtn.disabled = true;
-  els.generateBtn.textContent = t('translating');
-  try {
-    const out = await callAI(state.dsl, state.provider, els.apiKey.value.trim(), translatePrompt(state.lang));
-    const clean = out.replace(/```[a-z]*\s*/gi, '').replace(/```/g, '').trim();
     if (!clean) throw new Error('empty response');
     state.dsl = clean;
     els.dsl.value = clean;
@@ -1106,6 +1198,7 @@ function saveState() {
       pad: state.pad,
       cooking: state.cooking,
       provider: state.provider,
+      aiMode: state.aiMode,
       lang: state.lang,
       orient: state.orient,
       ingDir: state.ingDir,
@@ -1128,6 +1221,7 @@ function loadState() {
   const dsl = localStorage.getItem('mk.dsl');
   state.dsl = dsl === null ? DEFAULT_DSL : dsl;
   if (!LANGS[state.lang]) state.lang = 'en';
+  if (state.aiMode !== 'invent') state.aiMode = 'source';
   if (state.orient !== 'v') state.orient = 'h';
   if (state.ingDir !== 'v') state.ingDir = 'h';
   if (!['auto', 'h', 'v'].includes(state.actDir)) state.actDir = 'auto';
@@ -1180,6 +1274,12 @@ function bind() {
   els.generateBtn.addEventListener('click', generate);
 
   els.provider.addEventListener('change', () => { state.provider = els.provider.value; saveState(); });
+  els.aiMode.addEventListener('change', () => {
+    state.aiMode = els.aiMode.value === 'invent' ? 'invent' : 'source';
+    els.rawText.dataset.i18nPh = state.aiMode === 'invent' ? 'inventPh' : 'rawTextPh';
+    applyI18n();
+    saveState();
+  });
   els.outputLang.addEventListener('change', () => {
     state.lang = els.outputLang.value;
     applyI18n();
@@ -1232,6 +1332,7 @@ function init() {
     rawText: $('#rawText'),
     apiKey: $('#apiKey'),
     provider: $('#provider'),
+    aiMode: $('#aiMode'),
     outputLang: $('#outputLang'),
     orientSel: $('#orientSel'),
     ingDir: $('#ingDir'),
@@ -1262,6 +1363,8 @@ function init() {
   els.rawText.value = state.rawText || '';
   els.apiKey.value = state.apiKey || '';
   els.provider.value = state.provider;
+  els.aiMode.value = state.aiMode;
+  els.rawText.dataset.i18nPh = state.aiMode === 'invent' ? 'inventPh' : 'rawTextPh';
   els.outputLang.value = state.lang;
   els.orientSel.value = state.orient;
   els.ingDir.value = state.ingDir;

@@ -32,6 +32,7 @@ function makeSandbox() {
   const sandbox = {
     console,
     setTimeout, clearTimeout, setInterval, clearInterval,
+    URL,
     document: {
       addEventListener() {},
       querySelector() { return elStub(); },
@@ -58,7 +59,7 @@ vm.runInContext(`
     parseDSL, buildComponent, layoutComponent, tableHTML,
     scaleText, convertUnits, parseQty, fmtQty, parseIngredientLine,
     buildShoppingList,
-    reorderDslBlocks, wrapWords, looksLikeUrl,
+    reorderDslBlocks, wrapWords, looksLikeUrl, canonicalUrl, videoId,
     setOrientation: (v) => { state.orient = v; },
     setPortion: (v) => { state.portion = v; },
     resetDone: () => { doneMap = {}; }
@@ -518,6 +519,18 @@ registerCase('Extra: Link detection for auto-fetch', (ok) => {
   ok(E.looksLikeUrl('Read this: https://example.com now') === false, 'URL inside a sentence not auto-fetched');
   ok(E.looksLikeUrl('') === false, 'empty string not detected');
   ok(E.looksLikeUrl(null) === false, 'null not detected');
+});
+
+registerCase('Extra: URL canonicalization for reader proxy', (ok) => {
+  const messy = 'https://www.youtube.com/watch?si=nWywYTN3XCodeR6B&v=PnOMVMvsHPY&feature=youtu.be';
+  ok(E.videoId(messy) === 'PnOMVMvsHPY', `video id extracted from messy URL (got ${E.videoId(messy)})`);
+  ok(E.canonicalUrl(messy) === 'https://www.youtube.com/watch?v=PnOMVMvsHPY',
+    `tracking params stripped (got ${E.canonicalUrl(messy)})`);
+  ok(E.canonicalUrl('https://youtu.be/dQw4w9WgXcQ') === 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    'youtu.be short link canonicalized');
+  ok(E.videoId('https://www.youtube.com/shorts/AbCdEf_-123') === 'AbCdEf_-123', 'shorts video id extracted');
+  ok(E.canonicalUrl('https://example.com/recipe?si=1&feature=2&utm=x&b=3') === 'https://example.com/recipe?utm=x&b=3',
+    'non-YouTube keeps other params, drops si/feature');
 });
 
 /* ---------------- report ---------------- */

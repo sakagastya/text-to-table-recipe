@@ -55,6 +55,8 @@ const I18N = {
     needKey: 'Add your API key first \u2014 it never leaves your browser except to call the provider.',
     extracting: 'Creating table\u2026', genOk: 'Cooking table created \u2014 edit the DSL below.', aiErr: 'AI error: ',
     fetching: 'Reading link\u2026', fetchErr: 'Link error: ',
+    noRecipeMsg: 'No usable recipe found at that source (only ads, suggestions or comments). Try a page that actually lists ingredients and steps, or paste the text yourself.',
+    ytBlocked: 'YouTube blocked the text reader for this video. Open the video, copy the ingredients/steps from its description or transcript, and paste them here instead.',
     translating: 'Translating\u2026', transOk: 'Table translated \u2014 structure unchanged.',
     regenHint: 'UI language changed. Add your API key and the current table will be translated (structure stays identical).',
     rendering: 'Rendering PNG\u2026', pngOk: 'PNG saved.', pngFail: 'Export failed: ',
@@ -90,6 +92,8 @@ const I18N = {
     needKey: 'Tambahkan kunci API dulu \u2014 kunci hanya dikirim ke penyedia layanan.',
     extracting: 'Membuat tabel\u2026', genOk: 'Tabel masak dibuat \u2014 sunting DSL di bawah.', aiErr: 'Kesalahan AI: ',
     fetching: 'Membaca tautan\u2026', fetchErr: 'Kesalahan tautan: ',
+    noRecipeMsg: 'Tidak ada resep yang bisa dipakai dari sumber itu (hanya iklan, saran, atau komentar). Coba halaman yang benar-benar menampilkan bahan dan langkah, atau tempel teksnya langsung.',
+    ytBlocked: 'YouTube memblokir pembaca teks untuk video ini. Buka videonya, salin bahan/langkah dari deskripsi atau transkrip, lalu tempel di sini.',
     translating: 'Menerjemahkan\u2026', transOk: 'Tabel diterjemahkan \u2014 struktur tetap sama.',
     regenHint: 'Bahasa antarmuka berubah. Tambahkan kunci API dan tabel saat ini akan diterjemahkan (struktur tetap sama).',
     rendering: 'Merender PNG\u2026', pngOk: 'PNG tersimpan.', pngFail: 'Ekspor gagal: ',
@@ -852,30 +856,72 @@ function looksLikeUrl(s) {
   return /^(https?:\/\/|www\.)[^\s]+$/i.test(String(s || '').trim());
 }
 
-const READERS = [
-  (u) => 'https://r.jina.ai/' + u,
-  (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u)
-];
+function videoId(url) {
+  const s = String(url || '');
+  let m = s.match(/[?&]v=([\w-]{6,})/);
+  if (m) return m[1];
+  m = s.match(/(?:shorts|embed)\/([\w-]{6,})/);
+  if (m) return m[1];
+  m = s.match(/youtu\.be\/([\w-]{6,})/);
+  return m ? m[1] : '';
+}
 
-async function fetchReadable(url) {
+function canonicalUrl(url) {
+  const s = String(url || '').trim();
+  try {
+    const u = new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s);
+    if (/(^|\.)youtube\.com$/i.test(u.hostname)) {
+      const v = u.searchParams.get('v');
+      if (v) return 'https://www.youtube.com/watch?v=' + v;
+      const m = u.pathname.match(/\/(?:shorts|embed)\/([\w-]{6,})/);
+      if (m) return 'https://www.youtube.com/watch?v=' + m[1];
+    }
+    if (/^youtu\.be$/i.test(u.hostname)) return 'https://www.youtube.com/watch?v=' + u.pathname.slice(1);
+    u.searchParams.delete('si');
+    u.searchParams.delete('feature');
+    return u.toString();
+  } catch (e) {
+    return s;
+  }
+}
+
+const SHELL_MARKERS = [/Target URL returned error/i, /Tap to unmute/i, /playback doesn.{1,3}t begin shortly/i];
+
+function cleanFetchText(text) {
+  return String(text || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
+async function fetchReadable(rawUrl) {
+  const url = canonicalUrl(rawUrl);
+  const vid = videoId(url);
+  const attempts = [];
+  if (vid) {
+    attempts.push('https://r.jina.ai/https://www.youtube.com/watch?v=' + vid);
+    attempts.push('https://r.jina.ai/https://youtu.be/' + vid);
+  }
+  attempts.push('https://r.jina.ai/' + url);
+  attempts.push('https://api.allorigins.win/raw?url=' + encodeURIComponent(url));
   let lastErr = null;
-  for (const make of READERS) {
+  for (const target of attempts) {
     try {
-      const res = await fetch(make(url), { headers: { 'Accept': 'text/plain, text/html, */*' } });
+      const res = await fetch(target, { headers: { 'Accept': 'text/plain, text/html, */*' } });
       if (!res.ok) { lastErr = new Error('HTTP ' + res.status); continue; }
-      const text = await res.text();
-      const clean = text
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/[ \t]+/g, ' ')
-        .trim();
-      if (clean.length < 40) { lastErr = new Error('no readable text at that link'); continue; }
+      const clean = cleanFetchText(await res.text());
+      if (clean.length < 40) { lastErr = new Error('no readable text'); continue; }
+      if (SHELL_MARKERS.some((re) => re.test(clean))) { lastErr = new Error('page blocked the reader'); continue; }
       return clean.slice(0, 24000);
     } catch (err) {
       lastErr = err;
     }
   }
+  if (vid) throw new Error(t('ytBlocked'));
   throw lastErr || new Error('link could not be read');
 }
 

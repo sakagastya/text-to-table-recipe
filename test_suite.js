@@ -58,6 +58,7 @@ vm.runInContext(`
     parseDSL, buildComponent, layoutComponent, tableHTML,
     scaleText, convertUnits, parseQty, fmtQty, parseIngredientLine,
     buildShoppingList,
+    reorderDslBlocks,
     setPortion: (v) => { state.portion = v; },
     resetDone: () => { doneMap = {}; }
   };
@@ -417,6 +418,57 @@ registerCase('Extra: Grocery Consolidation Across Components', (ok) => {
   const salt = list2.find((i) => i.name === 'salt');
   ok(salt && fmt(salt.qty) === '3/4', `1/2 + 1/4 tsp salt → 3/4 tsp (got ${salt && fmt(salt.qty)})`);
   function fmt(v) { return E.fmtQty(v); }
+});
+
+/* ============================================================
+   CASE 7 — Block Reordering Controls (DSL-safe track moves)
+   ============================================================ */
+
+registerCase('Case 7: Block Reordering Controls (DSL-safe track moves)', (ok) => {
+  E.setPortion(1); E.resetDone();
+
+  // Basic move: swapping group 0 down flips [Base B] ahead of [Base A]
+  const moved = E.reorderDslBlocks(FIX.fork, 0, 0, 1);
+  ok(typeof moved === 'string' && moved !== FIX.fork, 'move-down returns a modified DSL string');
+  const idxA = moved.split('\n').findIndex((l) => l.trim() === '[Base A]');
+  const idxB = moved.split('\n').findIndex((l) => l.trim() === '[Base B]');
+  ok(idxB >= 0 && idxA >= 0 && idxB < idxA, `group order flipped: [Base B] line ${idxB} < [Base A] line ${idxA}`);
+
+  // Topology integrity: rebuilt table keeps identical column depth + merge rowspan
+  const before = build(FIX.fork);
+  const after = build(moved);
+  ok(after.models[0].totalCols === before.models[0].totalCols,
+    `column depth preserved after reorder (${after.models[0].totalCols})`);
+  const combine = findCell(after.models[0], 'action', 'combine');
+  ok(!!combine && combine.rowspan === 5, 'named middle-out merge still resolves by name (rowspan 5)');
+  ok(!after.html.includes('cf-empty'), 'no colspan/rowspan gaps after reorder');
+
+  // Boundary no-ops
+  ok(E.reorderDslBlocks(FIX.asym, 0, 0, -1) === FIX.asym, 'move-up at first group is a no-op');
+  ok(E.reorderDslBlocks(FIX.asym, 0, 3, 1) === FIX.asym, 'move-down at last group is a no-op');
+  ok(E.reorderDslBlocks(FIX.linear, 0, 0, 1) === FIX.linear, 'component with zero groups is untouched');
+
+  // Multi-component isolation: reorder inside component 0 leaves component 1 bytes intact
+  const modFix = 'Title: QA\n## COMPONENT: One\n[G1]\n- a1\n> act g1\n\n[G2]\n- b1\n> act g2\n\n## COMPONENT: Two\n[H1]\n- c1\n> act h1';
+  const movedC0 = E.reorderDslBlocks(modFix, 0, 0, 1);
+  ok(movedC0.indexOf('[H1]') === modFix.indexOf('[H1]'), 'component 2 source bytes untouched');
+  const compOne = movedC0.slice(0, movedC0.indexOf('## COMPONENT: Two'));
+  const g1 = compOne.split('\n').findIndex((l) => l.trim() === '[G1]');
+  const g2 = compOne.split('\n').findIndex((l) => l.trim() === '[G2]');
+  ok(g2 >= 0 && g1 >= 0 && g2 < g1, 'component 1 groups swapped in place ([G2] now first)');
+  ok(E.reorderDslBlocks(modFix, 1, 0, 1) === modFix, 'single-group component reorder is a no-op');
+
+  // Leading ungrouped block (global header steps) stays pinned above all groups
+  const lead = 'Title: QA Lead\n> global step\n[A]\n- a item\n[B]\n- b item';
+  const leadMoved = E.reorderDslBlocks(lead, 0, 0, 1);
+  const stepLine = leadMoved.split('\n').findIndex((l) => l.includes('global step'));
+  ok(stepLine === 1, `global header step stays pinned at line 2 (got line ${stepLine + 1})`);
+
+  // DOM wiring: every declared track with ingredients renders one control cluster
+  const navs = countRe(before.html, /class="trk-nav"/g);
+  ok(navs === 2, `two ingredient-backed tracks carry reorder controls (got ${navs})`);
+  ok(/data-ci="0" data-gi="0"/.test(before.html) && /data-ci="0" data-gi="1"/.test(before.html),
+    'control clusters expose component/group indices as data attributes');
 });
 
 /* ---------------- report ---------------- */

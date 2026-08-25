@@ -226,10 +226,11 @@ function parseDSL(src) {
 function buildComponent(comp) {
   const rows = [];
   const tracks = new Map([['main', { rows: [], col: 0 }]]);
+  const groupOrder = [];
   let cur = 'main';
 
   const newRow = () => {
-    const r = { cells: [], nextCol: 0, isHeader: false };
+    const r = { cells: [], nextCol: 0, isHeader: false, track: null, isTrackHead: false, trackIdx: -1 };
     rows.push(r);
     return r;
   };
@@ -252,7 +253,10 @@ function buildComponent(comp) {
 
   for (const tok of comp.lines) {
     if (tok.type === 'group') {
-      if (!tracks.has(tok.name)) tracks.set(tok.name, { rows: [], col: 0 });
+      if (!tracks.has(tok.name)) {
+        tracks.set(tok.name, { rows: [], col: 0 });
+        groupOrder.push(tok.name);
+      }
       cur = tok.name;
       continue;
     }
@@ -264,6 +268,11 @@ function buildComponent(comp) {
       const span = Math.max(track.col, 1);
       row.cells.push({ text: tok.text, colspan: span, rowspan: 1, kind: 'ing' });
       row.nextCol = span;
+      if (cur !== 'main') {
+        row.track = cur;
+        row.isTrackHead = track.rows.length === 0;
+        row.trackIdx = groupOrder.indexOf(cur);
+      }
       track.rows.push(row);
       continue;
     }
@@ -374,10 +383,17 @@ function tableHTML(model, ci) {
       }
       let text = cell.text;
       if (cell.kind === 'ing') text = scaleText(convertUnits(text), state.portion);
+      let nav = '';
+      if (cell.kind === 'ing' && row.isTrackHead) {
+        nav = '<span class="trk-nav" data-ci="' + ci + '" data-gi="' + row.trackIdx + '">' +
+          '<button type="button" class="trk-btn" data-dir="-1" title="Move group up" aria-label="Move group up">&#8593;</button>' +
+          '<button type="button" class="trk-btn" data-dir="1" title="Move group down" aria-label="Move group down">&#8595;</button>' +
+          '</span>';
+      }
       html += '<td class="' + cls.join(' ') + '"' +
         (id ? ' data-id="' + id + '"' : '') +
         ' colspan="' + cell.colspan + '" rowspan="' + cell.rowspan + '">' +
-        esc(text) + '</td>';
+        nav + esc(text) + '</td>';
     }
     html += '</tr>';
   });
@@ -418,6 +434,62 @@ function render() {
   document.title = doc.title + ' — Matrix Kitchen';
 }
 
+/* ---------------- block reordering ---------------- */
+
+function componentRanges(lines) {
+  const ranges = [];
+  const heads = [];
+  let leadFirst = -1;
+  lines.forEach((l, i) => {
+    const t = l.trim();
+    if (/^##/.test(t)) heads.push(i);
+    else if (heads.length === 0 && leadFirst < 0 && /^[-\[>]/.test(t)) leadFirst = i;
+  });
+  if (!heads.length) ranges.push({ start: 0, end: lines.length });
+  else if (leadFirst >= 0) ranges.push({ start: 0, end: heads[0] });
+  heads.forEach((h, i) => {
+    ranges.push({ start: h + 1, end: i + 1 < heads.length ? heads[i + 1] : lines.length });
+  });
+  return ranges;
+}
+
+function groupBlockIndices(lines, range) {
+  const idx = [];
+  for (let i = range.start; i < range.end; i++) {
+    const t = lines[i].trim();
+    if (t.startsWith('[') && t.endsWith(']')) idx.push(i);
+  }
+  return idx;
+}
+
+function reorderDslBlocks(src, ci, gi, dir) {
+  const lines = String(src || '').split(/\r?\n/);
+  const range = componentRanges(lines)[ci];
+  if (!range || gi < 0) return src;
+  const heads = groupBlockIndices(lines, range);
+  const swap = gi + dir;
+  if (swap < 0 || swap >= heads.length) return src;
+  const first = Math.min(gi, swap);
+  const second = Math.max(gi, swap);
+  const fStart = heads[first];
+  const sStart = heads[second];
+  const sEnd = second + 1 < heads.length ? heads[second + 1] : range.end;
+  const fSeg = lines.slice(fStart, sStart);
+  const sSeg = lines.slice(sStart, sEnd);
+  return [...lines.slice(0, fStart), ...sSeg, ...fSeg, ...lines.slice(sEnd)].join('\n');
+}
+
+function applyReorder(ci, gi, dir) {
+  const next = reorderDslBlocks(state.dsl, ci, gi, dir);
+  if (next === state.dsl) return;
+  state.dsl = next;
+  els.dsl.value = next;
+  loadDone();
+  render();
+  saveState();
+  toast(dir < 0 ? 'Group moved up.' : 'Group moved down.');
+}
+
 /* ---------------- cooking mode ---------------- */
 
 function doneKey() { return 'mk.done.' + hash(state.dsl); }
@@ -430,6 +502,7 @@ function loadDone() {
 function saveDone() { localStorage.setItem(doneKey(), JSON.stringify(doneMap)); }
 
 function onCanvasClick(e) {
+  if (e.target.closest('.trk-btn')) return;
   if (!state.cooking) return;
   const td = e.target.closest('td[data-id]');
   if (!td) return;
@@ -556,6 +629,7 @@ function savePNG() {
   if (typeof html2canvas === 'undefined') return toast('html2canvas could not be loaded (offline?).');
   const target = els.canvas.querySelector('.recipe') || els.canvas;
   toast('Rendering PNG\u2026');
+  document.body.classList.add('exporting');
   html2canvas(target, {
     scale: 2,
     backgroundColor: getComputedStyle(document.body).backgroundColor || '#ffffff',
@@ -566,7 +640,8 @@ function savePNG() {
     a.href = c.toDataURL('image/png');
     a.click();
     toast('PNG saved.');
-  }).catch((err) => toast('Export failed: ' + err.message));
+  }).catch((err) => toast('Export failed: ' + err.message))
+    .finally(() => document.body.classList.remove('exporting'));
 }
 
 /* ---------------- theme & appearance ---------------- */
@@ -651,6 +726,15 @@ function bind() {
     els.canvas.classList.toggle('cooking', state.cooking);
     if (state.cooking) toast('Cooking mode on — click steps to mark them done.');
     saveState();
+  });
+
+  els.canvas.addEventListener('click', (e) => {
+    const btn = e.target.closest('.trk-btn');
+    if (!btn) return;
+    const nav = btn.closest('.trk-nav');
+    if (!nav) return;
+    e.preventDefault();
+    applyReorder(+nav.dataset.ci, +nav.dataset.gi, +btn.dataset.dir);
   });
 
   els.canvas.addEventListener('click', onCanvasClick);

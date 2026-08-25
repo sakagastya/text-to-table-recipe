@@ -6,6 +6,7 @@ Convert raw recipe text into a sleek, editorial **"Cooking for Engineers" tabula
 
 - **AI Auto-Extract** — paste a messy blog post, bring your own Gemini or OpenAI API key (stored only in your browser's `localStorage`), and the model returns pure DSL.
 - **DSL Code Studio** — live editor with instant re-rendering.
+- **Track reordering** — hover a parallel branch's first row and use the ▲ ▼ controls to move whole group blocks within the DSL; merges resolve by name, so table topology is never broken.
 - **Portion multiplier** — ½× / 1× / 2× / 5×, scales every quantity in real time.
 - **Cooking mode** — click action/ingredient cells to gray out completed steps.
 - **Shopping list** — consolidates duplicate ingredients into summed quantities as a checklist.

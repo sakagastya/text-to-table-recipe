@@ -320,10 +320,50 @@ input[type="color"] {
   transition: background .15s, opacity .15s;
 }
 
-.cf-table td.cf-ing { min-width: 15rem; }
+.cf-table td.cf-ing { min-width: 15rem; position: relative; }
 .cf-table td.cf-action { text-align: center; font-weight: 550; min-width: 2.2rem; }
 .cf-table td.cf-header { text-align: center; font-weight: 650; background: var(--accent-soft); }
 .cf-table td.cf-empty { border-color: transparent; }
+
+.trk-nav {
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  opacity: .25;
+  transition: opacity .15s;
+}
+
+.cf-table tr:hover .trk-nav,
+.trk-nav:focus-within { opacity: 1; }
+
+.exporting .trk-nav { display: none; }
+
+.trk-btn {
+  width: 17px;
+  height: 15px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color .12s, border-color .12s, background .12s, transform .1s;
+}
+
+.trk-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.trk-btn:active { transform: translateY(1px); }
 
 td.vert {
   writing-mode: vertical-rl;

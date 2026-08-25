@@ -29,21 +29,83 @@ const THEMES = {
   ocean:   { accent: '#0284c7', soft: '#e0f2fe' }
 };
 
-const SYSTEM_PROMPT = `You are a recipe-to-DSL converter for a tabular "Cooking for Engineers" matrix generator.
-Convert the user's recipe text into the custom DSL below. Output ONLY the DSL syntax: no markdown fences, no commentary, no explanations.
+const I18N = {
+  en: {
+    tagline: 'Recipe text \u2192 editorial cooking matrix',
+    p1: 'AI Auto-Extract', provider: 'Provider',
+    apiKey: 'API key', apiKeyNote: '(stored only in your browser)',
+    keyPh: 'Paste your key\u2026',
+    rawText: 'Raw recipe / blog text',
+    rawTextPh: 'Paste the messy blog post here\u2026 The AI will extract only the essentials.',
+    genBtn: 'Generate DSL', p2: 'DSL Code Studio', syntax: 'Syntax',
+    p3: 'Appearance', theme: 'Theme', accent: 'Custom accent',
+    cellFont: 'Cell font', cellPad: 'Cell padding', resetAccent: 'Reset accent',
+    layout: 'Layout', flow: 'Table flow', horizontal: 'Horizontal', vertical: 'Vertical',
+    ingText: 'Ingredient text', actText: 'Action text', auto: 'Auto',
+    ingWords: 'Ingredient words/line', actWords: 'Action words/line',
+    langLabel: 'Language', portions: 'Portions', cooking: 'Cooking mode',
+    shopBtn: 'Shopping list', pngBtn: 'Save as PNG',
+    shopTitle: 'Shopping List', scaledTo: 'Scaled to',
+    shopNote: '\u00B7 duplicates consolidated \u00B7 metric units enforced',
+    foot: '100% client-side. No backend, no build step. Ready for GitHub Pages.',
+    canvasEmpty: 'Nothing to render yet \u2014 write some DSL on the left, or let the AI extract it for you.',
+    shopEmpty: 'No ingredients found in the current DSL.',
+    cookingOn: 'Cooking mode on \u2014 click steps to mark them done.',
+    needText: 'Paste some raw recipe text first.',
+    needKey: 'Add your API key first \u2014 it never leaves your browser except to call the provider.',
+    extracting: 'Extracting\u2026', genOk: 'DSL generated \u2014 edit it freely in the studio below.', aiErr: 'AI error: ',
+    rendering: 'Rendering PNG\u2026', pngOk: 'PNG saved.', pngFail: 'Export failed: ',
+    offlineCanvas: 'html2canvas could not be loaded (offline?).',
+    movedUp: 'Group moved up.', movedDown: 'Group moved down.',
+    navUp: 'Move group up', navDown: 'Move group down',
+    modelSwitch: 'Gemini model switched to ', busy: ' busy \u2014 retrying\u2026',
+    noModels: 'This Gemini API key has no text-generation models available.'
+  },
+  id: {
+    tagline: 'Teks resep \u2192 matriks memasak editorial',
+    p1: 'Ekstraksi Otomatis AI', provider: 'Penyedia',
+    apiKey: 'Kunci API', apiKeyNote: '(hanya tersimpan di browser Anda)',
+    keyPh: 'Tempel kunci Anda\u2026',
+    rawText: 'Teks resep / blog mentah',
+    rawTextPh: 'Tempel tulisan blog mentah di sini\u2026 AI hanya mengekstrak yang penting.',
+    genBtn: 'Buat DSL', p2: 'Studio Kode DSL', syntax: 'Sintaks',
+    p3: 'Tampilan', theme: 'Tema', accent: 'Aksen kustom',
+    cellFont: 'Font sel', cellPad: 'Padding sel', resetAccent: 'Reset aksen',
+    layout: 'Tata Letak', flow: 'Arah tabel', horizontal: 'Horizontal', vertical: 'Vertikal',
+    ingText: 'Teks bahan', actText: 'Teks aksi', auto: 'Otomatis',
+    ingWords: 'Kata bahan/baris', actWords: 'Kata aksi/baris',
+    langLabel: 'Bahasa', portions: 'Porsi', cooking: 'Mode memasak',
+    shopBtn: 'Daftar belanja', pngBtn: 'Simpan PNG',
+    shopTitle: 'Daftar Belanja', scaledTo: 'Diskalakan',
+    shopNote: '\u00B7 duplikat digabung \u00B7 satuan metrik dipaksa',
+    foot: '100% sisi klien. Tanpa backend, tanpa build. Siap untuk GitHub Pages.',
+    canvasEmpty: 'Belum ada yang dirender \u2014 tulis DSL di kiri, atau biarkan AI mengekstraknya.',
+    shopEmpty: 'Tidak ada bahan dalam DSL saat ini.',
+    cookingOn: 'Mode memasak aktif \u2014 klik langkah untuk menandai selesai.',
+    needText: 'Tempel teks resep mentah dulu.',
+    needKey: 'Tambahkan kunci API dulu \u2014 kunci hanya dikirim ke penyedia layanan.',
+    extracting: 'Mengekstrak\u2026', genOk: 'DSL dibuat \u2014 sunting bebas di studio di bawah.', aiErr: 'Kesalahan AI: ',
+    rendering: 'Merender PNG\u2026', pngOk: 'PNG tersimpan.', pngFail: 'Ekspor gagal: ',
+    offlineCanvas: 'html2canvas tidak dapat dimuat (offline?).',
+    movedUp: 'Grup naik.', movedDown: 'Grup turun.',
+    navUp: 'Naikkan grup', navDown: 'Turunkan grup',
+    modelSwitch: 'Model Gemini beralih ke ', busy: ' sibuk \u2014 mencoba ulang\u2026',
+    noModels: 'Kunci API Gemini ini tidak memiliki model teks yang tersedia.'
+  }
+};
 
-DSL RULES:
-- Title: <recipe name>                        (must be the first line)
-- ## COMPONENT: <name>                        (optional; splits the recipe into separate modular tables)
-- [Group Name]                                (declares a parallel branch; following ingredients/actions belong to it)
-- - <ingredient with quantity>                (one ingredient per line; ALWAYS use metric grams (g), millilitres (mL), tsp or Tbs only. Convert cups/oz/lbs/quarts to g or mL and keep the converted value in parentheses, e.g. "- 240 mL (200 g) sugar")
-- > <action>                                  (merges all active ingredients above it into one step)
-- > (wait)                                    (hold-back: pushes the active ingredients right without merging)
-- > <action> (Group A, Group B)               (merges the named parallel groups together - middle-out merge)
-- A ">" action placed immediately after the Title (before any ingredient) is a global header step, e.g. "> Preheat oven to 175 C".
+function t(key) { return (I18N[state.lang] && I18N[state.lang][key]) || I18N.en[key] || key; }
 
-EXAMPLE OUTPUT:
-Title: Modern Banyuwangi Sambal Tempong
+function applyI18n() {
+  document.documentElement.lang = state.lang === 'id' ? 'id' : 'en';
+  document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-ph]').forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
+}
+
+const LANGS = {
+  en: {
+    label: 'English',
+    example: `Title: Modern Banyuwangi Sambal Tempong
 > Heat water to boiling
 
 [Boiled Base]
@@ -62,7 +124,52 @@ Title: Modern Banyuwangi Sambal Tempong
 [Assembly]
 > grind in cobek (Boiled Base, Raw Aromatics)
 - 1 Tbs (15 mL) lime juice
-> mix well`;
+> mix well`
+  },
+  id: {
+    label: 'Bahasa Indonesia',
+    example: `Title: Sambal Tempong Banyuwangi Modern
+> Didihkan air hingga mendidih
+
+[Bahan Direbus]
+- 100 g tomat, cincang
+- 1 tsp (5 g) terasi
+> rebus hingga lunak
+
+[Bahan Mentah]
+- 50 g cabai rawit
+- 3 bawang merah, kupas
+- 2 siung bawang putih
+- 1/2 tsp (2 g) garam
+- 1 tsp (5 g) gula
+> (tunggu)
+
+[Peracikan]
+> haluskan dengan cobek (Bahan Direbus, Bahan Mentah)
+- 1 Tbs (15 mL) air jeruk nipis
+> aduk rata`
+  }
+};
+
+function systemPrompt(lang) {
+  const l = LANGS[lang] || LANGS.en;
+  return `You are a recipe-to-DSL converter for a tabular "Cooking for Engineers" cooking matrix.
+Reply with ONLY the DSL below - no markdown fences, no commentary.
+Write ALL text (title, ingredients, actions, group names) in ${l.label}. Keep unit symbols g, mL, tsp, Tbs.
+
+DSL RULES:
+- Title: <name>                     first line
+- ## COMPONENT: <name>              optional; starts a separate modular table
+- [Group Name]                      parallel branch
+- - <ingredient + quantity>         one per line; metric only (g, mL, tsp, Tbs); convert cups/oz/lbs and keep the result in parentheses, e.g. "- 240 mL (200 g) sugar"
+- > <action>                        merges all active ingredients above into one step
+- > (wait)                          hold-back: pushes ingredients right without merging
+- > <action> (Group A, Group B)     middle-out merge of named groups
+- a > action right after the Title is a global header step
+
+EXAMPLE OUTPUT:
+${l.example}`;
+}
 
 const $ = (s) => document.querySelector(s);
 
@@ -77,6 +184,12 @@ const state = {
   pad: 10,
   cooking: false,
   provider: 'gemini',
+  lang: 'en',
+  orient: 'h',
+  ingDir: 'h',
+  actDir: 'auto',
+  ingWrap: 0,
+  actWrap: 0,
   apiKey: '',
   rawText: ''
 };
@@ -364,30 +477,86 @@ function layoutComponent(model) {
 
 /* ---------------- renderer ---------------- */
 
+function wrapWords(text, n) {
+  n = +n || 0;
+  if (n < 1) return text;
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  for (let i = 0; i < words.length; i += n) lines.push(words.slice(i, i + n).join(' '));
+  return lines.join('\n');
+}
+
+function transposeGrid(grid, cols) {
+  const R = grid.length;
+  const C = cols;
+  const tg = Array.from({ length: C }, () => new Array(R).fill(null));
+  for (let r = 0; r < R; r++)
+    for (let c = 0; c < C; c++) tg[c][r] = grid[r][c] || null;
+  const seen = new Set();
+  for (let r = 0; r < C; r++) {
+    for (let c = 0; c < R; c++) {
+      const cell = tg[r][c];
+      if (!cell || seen.has(cell)) continue;
+      seen.add(cell);
+      let span = 0;
+      while (c + span < R && tg[r][c + span] === cell) span++;
+      let depth = 0;
+      while (r + depth < C && tg[r + depth][c] === cell) depth++;
+      cell._row = r;
+      cell._col = c;
+      cell.colspan = span;
+      cell.rowspan = depth;
+    }
+  }
+  return { grid: tg, total: R };
+}
+
 function tableHTML(model, ci) {
-  const grid = layoutComponent(model);
+  const grid0 = layoutComponent(model);
+  model.rows.forEach((row, ri) => row.cells.forEach((cell, idx) => {
+    cell._ridx = ri;
+    cell._cidx = idx;
+    cell._head = cell.kind === 'ing' && row.isTrackHead && row.cells[0] === cell;
+    if (cell._head) cell._gi = row.trackIdx;
+  }));
+  let grid = grid0;
+  let total = model.totalCols;
+  if (state.orient === 'v') {
+    const tp = transposeGrid(grid, total);
+    grid = tp.grid;
+    total = tp.total;
+  }
+  model.totalCols = total;
   let html = '';
-  model.rows.forEach((row, ri) => {
+  const R = grid.length;
+  for (let ri = 0; ri < R; ri++) {
     html += '<tr>';
-    for (let c = 0; c < model.totalCols; c++) {
+    for (let c = 0; c < total; c++) {
       const cell = grid[ri][c];
       if (!cell) { html += '<td class="cf-empty"></td>'; continue; }
       if (cell._row !== ri || cell._col !== c) continue;
-      const idx = row.cells.indexOf(cell);
       const cls = ['cf-' + cell.kind];
-      if (cell.kind === 'action' && cell.rowspan >= 3) cls.push('vert');
+      let vert = false;
+      if (cell.kind === 'action') vert = state.actDir === 'v' || (state.actDir === 'auto' && cell.rowspan >= 3);
+      else if (cell.kind === 'ing') vert = state.ingDir === 'v';
+      if (vert) cls.push('vert');
       let id = '';
       if (cell.kind === 'action' || cell.kind === 'ing') {
-        id = ci + ':' + ri + ':' + idx;
+        id = ci + ':' + cell._ridx + ':' + cell._cidx;
         if (doneMap[id]) cls.push('done');
       }
       let text = cell.text;
       if (cell.kind === 'ing') text = scaleText(convertUnits(text), state.portion);
+      const wrapN = cell.kind === 'ing' ? state.ingWrap : state.actWrap;
+      if (!vert && wrapN >= 1) {
+        text = wrapWords(text, wrapN);
+        cls.push('wrapped');
+      }
       let nav = '';
-      if (cell.kind === 'ing' && row.isTrackHead) {
-        nav = '<span class="trk-nav" data-ci="' + ci + '" data-gi="' + row.trackIdx + '">' +
-          '<button type="button" class="trk-btn" data-dir="-1" title="Move group up" aria-label="Move group up">&#8593;</button>' +
-          '<button type="button" class="trk-btn" data-dir="1" title="Move group down" aria-label="Move group down">&#8595;</button>' +
+      if (cell._head) {
+        nav = '<span class="trk-nav" data-ci="' + ci + '" data-gi="' + cell._gi + '">' +
+          '<button type="button" class="trk-btn" data-dir="-1" title="' + esc(t('navUp')) + '" aria-label="' + esc(t('navUp')) + '">&#8593;</button>' +
+          '<button type="button" class="trk-btn" data-dir="1" title="' + esc(t('navDown')) + '" aria-label="' + esc(t('navDown')) + '">&#8595;</button>' +
           '</span>';
       }
       html += '<td class="' + cls.join(' ') + '"' +
@@ -396,7 +565,7 @@ function tableHTML(model, ci) {
         nav + esc(text) + '</td>';
     }
     html += '</tr>';
-  });
+  }
   return '<table class="cf-table">' + html + '</table>';
 }
 
@@ -426,7 +595,7 @@ function render() {
   if (!shown) {
     const p = document.createElement('p');
     p.className = 'canvas-empty';
-    p.textContent = 'Nothing to render yet — write some DSL on the left, or let the AI extract it for you.';
+    p.textContent = t('canvasEmpty');
     wrap.appendChild(p);
   }
   canvas.appendChild(wrap);
@@ -487,7 +656,7 @@ function applyReorder(ci, gi, dir) {
   loadDone();
   render();
   saveState();
-  toast(dir < 0 ? 'Group moved up.' : 'Group moved down.');
+  toast(dir < 0 ? t('movedUp') : t('movedDown'));
 }
 
 /* ---------------- cooking mode ---------------- */
@@ -549,7 +718,7 @@ function openShopping() {
   els.shopList.innerHTML = '';
   $('#modalPortion').textContent = state.portion + '\u00D7';
   if (!items.length) {
-    els.shopList.innerHTML = '<li>No ingredients found in the current DSL.</li>';
+    els.shopList.innerHTML = '<li>' + esc(t('shopEmpty')) + '</li>';
   }
   items.forEach((it) => {
     const li = document.createElement('li');
@@ -580,7 +749,7 @@ async function apiErr(res, label) {
 
 function geminiPayload(text) {
   return {
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    systemInstruction: { parts: [{ text: systemPrompt(state.lang) }] },
     contents: [{ role: 'user', parts: [{ text }] }]
   };
 }
@@ -594,6 +763,7 @@ async function geminiGenerate(model, key, text) {
   if (!res.ok) {
     const err = new Error(await apiErr(res, 'Gemini'));
     err.status = res.status;
+    err.model = model;
     throw err;
   }
   const data = await res.json();
@@ -615,7 +785,7 @@ async function discoverGeminiModel(key) {
       if (la !== lb) return lb - la;
       return b.localeCompare(a, undefined, { numeric: true });
     });
-  if (!usable.length) throw new Error('This Gemini API key has no text-generation models available.');
+  if (!usable.length) throw new Error(t('noModels'));
   return usable[0];
 }
 
@@ -629,7 +799,7 @@ async function withRetry(fn) {
       return await fn();
     } catch (err) {
       if (!GEMINI_TRANSIENT.has(err.status) || attempt >= 2) throw err;
-      toast('Model busy (' + err.status + ') \u2014 retrying\u2026');
+      toast(err.model + t('busy'));
       await sleep(1200 * attempt);
     }
   }
@@ -651,9 +821,9 @@ async function callGemini(text, key) {
   try {
     const model = await discoverGeminiModel(key);
     const out = await withRetry(() => geminiGenerate(model, key, text));
-    geminiModel = model;
-    toast('Gemini model switched to ' + model + '.');
-    return out;
+  geminiModel = model;
+  toast(t('modelSwitch') + model);
+  return out;
   } catch (err) {
     throw lastErr || err;
   }
@@ -667,7 +837,7 @@ async function callAI(text, provider, key) {
     body: JSON.stringify({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt(state.lang) },
         { role: 'user', content: text }
       ]
     })
@@ -680,10 +850,10 @@ async function callAI(text, provider, key) {
 async function generate() {
   const raw = els.rawText.value.trim();
   const key = els.apiKey.value.trim();
-  if (!raw) return toast('Paste some raw recipe text first.');
-  if (!key) return toast('Add your API key first — it never leaves your browser except to call the provider.');
+  if (!raw) return toast(t('needText'));
+  if (!key) return toast(t('needKey'));
   els.generateBtn.disabled = true;
-  els.generateBtn.textContent = 'Extracting\u2026';
+  els.generateBtn.textContent = t('extracting');
   try {
     const out = await callAI(raw, state.provider, key);
     const clean = out.replace(/```[a-z]*\s*/gi, '').replace(/```/g, '').trim();
@@ -693,32 +863,56 @@ async function generate() {
     loadDone();
     render();
     saveState();
-    toast('DSL generated — edit it freely in the studio below.');
+    toast(t('genOk'));
   } catch (err) {
-    toast('AI error: ' + err.message);
+    toast(t('aiErr') + err.message);
   }
   els.generateBtn.disabled = false;
-  els.generateBtn.textContent = 'Generate DSL';
+  els.generateBtn.textContent = t('genBtn');
 }
 
 /* ---------------- PNG export ---------------- */
 
+function sanitizeClone(clonedDoc) {
+  const MODERN = /color\(|oklch\(|oklab\(|lab\(|lch\(|color-mix\(/i;
+  const ctx = document.createElement('canvas').getContext('2d');
+  const legacy = (c) => {
+    try { ctx.fillStyle = c; return ctx.fillStyle; } catch (e) { return c; }
+  };
+  const fix = (s) => s.replace(/(color\([^)]*\)|oklch\([^)]*\)|oklab\([^)]*\)|lab\([^)]*\)|lch\([^)]*\)|color-mix\([^)]*\))/gi, (m) => legacy(m));
+  const srcRoot = els.canvas.querySelector('.recipe') || els.canvas;
+  const dstRoot = clonedDoc.querySelector('.recipe') || clonedDoc.querySelector('#canvas');
+  if (!dstRoot) return;
+  const src = srcRoot.querySelectorAll('*');
+  const dst = dstRoot.querySelectorAll('*');
+  const props = ['color', 'backgroundColor', 'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor', 'backgroundImage', 'boxShadow'];
+  const n = Math.min(src.length, dst.length);
+  for (let i = 0; i < n; i++) {
+    const cs = getComputedStyle(src[i]);
+    for (const p of props) {
+      const v = cs[p];
+      if (v && MODERN.test(v)) dst[i].style[p] = fix(v);
+    }
+  }
+}
+
 function savePNG() {
-  if (typeof html2canvas === 'undefined') return toast('html2canvas could not be loaded (offline?).');
+  if (typeof html2canvas === 'undefined') return toast(t('offlineCanvas'));
   const target = els.canvas.querySelector('.recipe') || els.canvas;
-  toast('Rendering PNG\u2026');
+  toast(t('rendering'));
   document.body.classList.add('exporting');
   html2canvas(target, {
     scale: 2,
     backgroundColor: getComputedStyle(document.body).backgroundColor || '#ffffff',
-    useCORS: true
+    useCORS: true,
+    onclone: sanitizeClone
   }).then((c) => {
     const a = document.createElement('a');
     a.download = (document.title.replace(' — Matrix Kitchen', '') || 'recipe') + '.png';
     a.href = c.toDataURL('image/png');
     a.click();
-    toast('PNG saved.');
-  }).catch((err) => toast('Export failed: ' + err.message))
+    toast(t('pngOk'));
+  }).catch((err) => toast(t('pngFail') + err.message))
     .finally(() => document.body.classList.remove('exporting'));
 }
 
@@ -765,6 +959,12 @@ function saveState() {
       pad: state.pad,
       cooking: state.cooking,
       provider: state.provider,
+      lang: state.lang,
+      orient: state.orient,
+      ingDir: state.ingDir,
+      actDir: state.actDir,
+      ingWrap: state.ingWrap,
+      actWrap: state.actWrap,
       apiKey: state.apiKey,
       rawText: state.rawText
     }));
@@ -776,9 +976,16 @@ function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem('mk.settings') || '{}');
     Object.assign(state, saved);
+    state.lang = saved.lang || saved.outputLang || state.lang;
   } catch (e) { /* ignore */ }
   const dsl = localStorage.getItem('mk.dsl');
   state.dsl = dsl === null ? DEFAULT_DSL : dsl;
+  if (!LANGS[state.lang]) state.lang = 'en';
+  if (state.orient !== 'v') state.orient = 'h';
+  if (state.ingDir !== 'v') state.ingDir = 'h';
+  if (!['auto', 'h', 'v'].includes(state.actDir)) state.actDir = 'auto';
+  state.ingWrap = Math.min(6, Math.max(0, +state.ingWrap || 0));
+  state.actWrap = Math.min(6, Math.max(0, +state.actWrap || 0));
 }
 
 /* ---------------- wiring ---------------- */
@@ -802,7 +1009,7 @@ function bind() {
   els.cookingToggle.addEventListener('change', () => {
     state.cooking = els.cookingToggle.checked;
     els.canvas.classList.toggle('cooking', state.cooking);
-    if (state.cooking) toast('Cooking mode on — click steps to mark them done.');
+    if (state.cooking) toast(t('cookingOn'));
     saveState();
   });
 
@@ -826,6 +1033,17 @@ function bind() {
   els.generateBtn.addEventListener('click', generate);
 
   els.provider.addEventListener('change', () => { state.provider = els.provider.value; saveState(); });
+  els.outputLang.addEventListener('change', () => {
+    state.lang = els.outputLang.value;
+    applyI18n();
+    render();
+    saveState();
+  });
+  els.orientSel.addEventListener('change', () => { state.orient = els.orientSel.value; render(); saveState(); });
+  els.ingDir.addEventListener('change', () => { state.ingDir = els.ingDir.value; render(); saveState(); });
+  els.actDir.addEventListener('change', () => { state.actDir = els.actDir.value; render(); saveState(); });
+  els.ingWrap.addEventListener('change', () => { state.ingWrap = +els.ingWrap.value || 0; render(); saveState(); });
+  els.actWrap.addEventListener('change', () => { state.actWrap = +els.actWrap.value || 0; render(); saveState(); });
   els.apiKey.addEventListener('input', () => { state.apiKey = els.apiKey.value; saveState(); });
   els.rawText.addEventListener('input', () => { state.rawText = els.rawText.value; saveState(); });
 
@@ -864,6 +1082,12 @@ function init() {
     rawText: $('#rawText'),
     apiKey: $('#apiKey'),
     provider: $('#provider'),
+    outputLang: $('#outputLang'),
+    orientSel: $('#orientSel'),
+    ingDir: $('#ingDir'),
+    actDir: $('#actDir'),
+    ingWrap: $('#ingWrap'),
+    actWrap: $('#actWrap'),
     generateBtn: $('#generateBtn'),
     portion: $('#portion'),
     cookingToggle: $('#cookingToggle'),
@@ -888,6 +1112,12 @@ function init() {
   els.rawText.value = state.rawText || '';
   els.apiKey.value = state.apiKey || '';
   els.provider.value = state.provider;
+  els.outputLang.value = state.lang;
+  els.orientSel.value = state.orient;
+  els.ingDir.value = state.ingDir;
+  els.actDir.value = state.actDir;
+  els.ingWrap.value = String(state.ingWrap);
+  els.actWrap.value = String(state.actWrap);
   els.portion.value = String(state.portion);
   els.cookingToggle.checked = !!state.cooking;
   els.fontRange.value = state.font;
@@ -897,6 +1127,7 @@ function init() {
   els.accentPicker.value = state.accent || (THEMES[state.theme] || THEMES.emerald).accent;
 
   applyTheme();
+  applyI18n();
   renderSwatches();
   loadDone();
   bind();

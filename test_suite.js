@@ -58,7 +58,8 @@ vm.runInContext(`
     parseDSL, buildComponent, layoutComponent, tableHTML,
     scaleText, convertUnits, parseQty, fmtQty, parseIngredientLine,
     buildShoppingList,
-    reorderDslBlocks,
+    reorderDslBlocks, wrapWords,
+    setOrientation: (v) => { state.orient = v; },
     setPortion: (v) => { state.portion = v; },
     resetDone: () => { doneMap = {}; }
   };
@@ -469,6 +470,38 @@ registerCase('Case 7: Block Reordering Controls (DSL-safe track moves)', (ok) =>
   ok(navs === 2, `two ingredient-backed tracks carry reorder controls (got ${navs})`);
   ok(/data-ci="0" data-gi="0"/.test(before.html) && /data-ci="0" data-gi="1"/.test(before.html),
     'control clusters expose component/group indices as data attributes');
+});
+
+/* ============================================================
+   CASE 8 — Vertical (transposed) layout + word wrapping
+   ============================================================ */
+
+registerCase('Case 8: Vertical (transposed) layout + word wrapping', (ok) => {
+  E.setPortion(1); E.resetDone();
+  const h = build(FIX.fork);
+  E.setOrientation('v');
+  const v = build(FIX.fork);
+  E.setOrientation('h');
+
+  ok(v.models[0].totalCols === h.models[0].rows.length,
+    `vertical totalCols = horizontal row count (${v.models[0].totalCols} vs ${h.models[0].rows.length})`);
+  const comb = findCell(v.models[0], 'action', 'combine');
+  ok(!!comb, 'merge cell exists after transpose');
+  ok(comb.colspan === 5 && comb.rowspan === 1, `combine transposed to colspan×rowspan ${comb.colspan}×${comb.rowspan} (expect 5×1)`);
+  ok(!v.html.includes('cf-empty'), 'no empty cells in transposed DOM');
+  ok(v.html.includes('combine all') && v.html.includes('item a1') && v.html.includes('item b3'),
+    'all cell content preserved in vertical DOM');
+  ok(countRe(v.html, /<table class="cf-table">/g) === 1, 'vertical render is a single table element');
+
+  // Round-trip: transposing the vertical grid restores the horizontal geometry
+  const heatA = findCell(v.models[0], 'action', 'heat a');
+  ok(heatA.colspan === findCell(h.models[0], 'action', 'heat a').rowspan,
+    'cell spans swap exactly (heat a)');
+
+  ok(E.wrapWords('one two three four', 2) === 'one two\nthree four', 'wrapWords chunks 2 words per line');
+  ok(E.wrapWords('a b c', 0) === 'a b c', 'wrapWords 0 disables wrapping');
+  ok(E.wrapWords('a b c', 5) === 'a b c', 'wrapWords N above word count is a no-op');
+  ok(E.wrapWords('  spaced   out   words ', 2) === 'spaced out\nwords', 'wrapWords collapses whitespace');
 });
 
 /* ---------------- report ---------------- */

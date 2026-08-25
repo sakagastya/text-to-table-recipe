@@ -325,6 +325,27 @@ input[type="color"] {
 .cf-table td.cf-header { text-align: center; font-weight: 650; background: var(--accent-soft); }
 .cf-table td.cf-empty { border-color: transparent; }
 
+.cf-table td.wrapped { white-space: pre-line; }
+.cf-table td.cf-ing.wrapped { min-width: 6rem; }
+
+.exporting #canvas td.done {
+  background: repeating-linear-gradient(-45deg, transparent 0 6px, rgba(16, 24, 40, .12) 6px 12px);
+}
+
+.layout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.layout-grid .full { grid-column: 1 / -1; }
+
+.mini {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.mini select { padding: 5px 8px; font-size: 12px; font-weight: 600; }
+
 .trk-nav {
   position: absolute;
   left: 3px;

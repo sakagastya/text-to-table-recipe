@@ -167,6 +167,8 @@ Write ALL text (title, ingredients, actions, group names) in ${l.label}. Keep un
 
 STRUCTURE: keep the table compact, simple and identical regardless of language - fewest columns possible, short actions (2-6 words), [Groups] only for genuinely parallel prep work, one final merge action. The same recipe must yield the same table shape in every language.
 
+SOURCE: use ONLY recipe facts explicitly present in the user text (ingredients with amounts, cooking steps). Ignore ads, video titles, suggestions, related links, comments and navigation. If the text contains no usable recipe, reply with exactly: NO_RECIPE
+
 DSL RULES:
 - Title: <name>                     first line
 - ## COMPONENT: <name>              optional; starts a separate modular table
@@ -918,7 +920,7 @@ async function generate() {
   try {
     const out = await callAI(raw, state.provider, key);
     const clean = out.replace(/```[a-z]*\s*/gi, '').replace(/```/g, '').trim();
-    if (!clean) throw new Error('empty response');
+    if (!clean || /^NO_RECIPE\b/i.test(clean)) throw new Error(t('noRecipeMsg'));
     state.dsl = clean;
     els.dsl.value = clean;
     loadDone();

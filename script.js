@@ -35,8 +35,8 @@ const I18N = {
     p1: 'AI Auto-Extract', provider: 'Provider',
     apiKey: 'API key', apiKeyNote: '(stored only in your browser)',
     keyPh: 'Paste your key\u2026',
-    rawText: 'Raw recipe / blog text',
-    rawTextPh: 'Paste the messy blog post here\u2026 The AI will extract only the essentials.',
+    rawText: 'Recipe link or raw text',
+    rawTextPh: 'Paste a recipe link (web page or video) or the messy text here\u2026',
     genBtn: 'Create cooking table', p2: 'DSL Code Studio', syntax: 'Syntax',
     p3: 'Appearance', theme: 'Theme', accent: 'Custom accent',
     cellFont: 'Cell font', cellPad: 'Cell padding', resetAccent: 'Reset accent',
@@ -54,6 +54,7 @@ const I18N = {
     needText: 'Paste some raw recipe text first.',
     needKey: 'Add your API key first \u2014 it never leaves your browser except to call the provider.',
     extracting: 'Creating table\u2026', genOk: 'Cooking table created \u2014 edit the DSL below.', aiErr: 'AI error: ',
+    fetching: 'Reading link\u2026', fetchErr: 'Link error: ',
     translating: 'Translating\u2026', transOk: 'Table translated \u2014 structure unchanged.',
     regenHint: 'UI language changed. Add your API key and the current table will be translated (structure stays identical).',
     rendering: 'Rendering PNG\u2026', pngOk: 'PNG saved.', pngFail: 'Export failed: ',
@@ -69,8 +70,8 @@ const I18N = {
     p1: 'Ekstraksi Otomatis AI', provider: 'Penyedia',
     apiKey: 'Kunci API', apiKeyNote: '(hanya tersimpan di browser Anda)',
     keyPh: 'Tempel kunci Anda\u2026',
-    rawText: 'Teks resep / blog mentah',
-    rawTextPh: 'Tempel tulisan blog mentah di sini\u2026 AI hanya mengekstrak yang penting.',
+    rawText: 'Tautan resep atau teks mentah',
+    rawTextPh: 'Tempel tautan resep (halaman web atau video) atau teks mentah di sini\u2026',
     genBtn: 'Buat tabel masak', p2: 'Studio Kode DSL', syntax: 'Sintaks',
     p3: 'Tampilan', theme: 'Tema', accent: 'Aksen kustom',
     cellFont: 'Font sel', cellPad: 'Padding sel', resetAccent: 'Reset aksen',
@@ -88,6 +89,7 @@ const I18N = {
     needText: 'Tempel teks resep mentah dulu.',
     needKey: 'Tambahkan kunci API dulu \u2014 kunci hanya dikirim ke penyedia layanan.',
     extracting: 'Membuat tabel\u2026', genOk: 'Tabel masak dibuat \u2014 sunting DSL di bawah.', aiErr: 'Kesalahan AI: ',
+    fetching: 'Membaca tautan\u2026', fetchErr: 'Kesalahan tautan: ',
     translating: 'Menerjemahkan\u2026', transOk: 'Tabel diterjemahkan \u2014 struktur tetap sama.',
     regenHint: 'Bahasa antarmuka berubah. Tambahkan kunci API dan tabel saat ini akan diterjemahkan (struktur tetap sama).',
     rendering: 'Merender PNG\u2026', pngOk: 'PNG tersimpan.', pngFail: 'Ekspor gagal: ',
@@ -844,6 +846,37 @@ async function callGemini(text, key, sys) {
   }
 }
 
+function looksLikeUrl(s) {
+  return /^(https?:\/\/|www\.)[^\s]+$/i.test(String(s || '').trim());
+}
+
+const READERS = [
+  (u) => 'https://r.jina.ai/' + u,
+  (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u)
+];
+
+async function fetchReadable(url) {
+  let lastErr = null;
+  for (const make of READERS) {
+    try {
+      const res = await fetch(make(url), { headers: { 'Accept': 'text/plain, text/html, */*' } });
+      if (!res.ok) { lastErr = new Error('HTTP ' + res.status); continue; }
+      const text = await res.text();
+      const clean = text
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/[ \t]+/g, ' ')
+        .trim();
+      if (clean.length < 40) { lastErr = new Error('no readable text at that link'); continue; }
+      return clean.slice(0, 24000);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('link could not be read');
+}
+
 async function callAI(text, provider, key, sys) {
   if (provider === 'gemini') return callGemini(text, key, sys);
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -863,11 +896,24 @@ async function callAI(text, provider, key, sys) {
 }
 
 async function generate() {
-  const raw = els.rawText.value.trim();
+  let raw = els.rawText.value.trim();
   const key = els.apiKey.value.trim();
   if (!raw) return toast(t('needText'));
   if (!key) return toast(t('needKey'));
   els.generateBtn.disabled = true;
+  if (looksLikeUrl(raw)) {
+    els.generateBtn.textContent = t('fetching');
+    try {
+      raw = await fetchReadable(/^https?:\/\//i.test(raw) ? raw : 'https://' + raw);
+      els.rawText.value = raw;
+      state.rawText = raw;
+    } catch (err) {
+      toast(t('fetchErr') + err.message);
+      els.generateBtn.disabled = false;
+      els.generateBtn.textContent = t('genBtn');
+      return;
+    }
+  }
   els.generateBtn.textContent = t('extracting');
   try {
     const out = await callAI(raw, state.provider, key);

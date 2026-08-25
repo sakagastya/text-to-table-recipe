@@ -58,7 +58,7 @@ vm.runInContext(`
     parseDSL, buildComponent, layoutComponent, tableHTML,
     scaleText, convertUnits, parseQty, fmtQty, parseIngredientLine,
     buildShoppingList,
-    reorderDslBlocks, wrapWords,
+    reorderDslBlocks, wrapWords, looksLikeUrl,
     setOrientation: (v) => { state.orient = v; },
     setPortion: (v) => { state.portion = v; },
     resetDone: () => { doneMap = {}; }
@@ -502,6 +502,22 @@ registerCase('Case 8: Vertical (transposed) layout + word wrapping', (ok) => {
   ok(E.wrapWords('a b c', 0) === 'a b c', 'wrapWords 0 disables wrapping');
   ok(E.wrapWords('a b c', 5) === 'a b c', 'wrapWords N above word count is a no-op');
   ok(E.wrapWords('  spaced   out   words ', 2) === 'spaced out\nwords', 'wrapWords collapses whitespace');
+});
+
+/* ============================================================
+   EXTRA — Link detection for auto-fetch
+   ============================================================ */
+
+registerCase('Extra: Link detection for auto-fetch', (ok) => {
+  ok(E.looksLikeUrl('https://example.com/recipe') === true, 'https URL detected');
+  ok(E.looksLikeUrl('http://blog.example.com/recipe?id=2&x=1') === true, 'http URL with query detected');
+  ok(E.looksLikeUrl('www.youtube.com/watch?v=abc') === true, 'www URL detected');
+  ok(E.looksLikeUrl('https://youtu.be/xyz123') === true, 'youtu.be short link detected');
+  ok(E.looksLikeUrl('youtu.be/xyz') === false, 'bare short domain without scheme not detected');
+  ok(E.looksLikeUrl('Cara membuat rendang daging sapi') === false, 'plain text not detected');
+  ok(E.looksLikeUrl('Read this: https://example.com now') === false, 'URL inside a sentence not auto-fetched');
+  ok(E.looksLikeUrl('') === false, 'empty string not detected');
+  ok(E.looksLikeUrl(null) === false, 'null not detected');
 });
 
 /* ---------------- report ---------------- */

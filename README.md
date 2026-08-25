@@ -41,4 +41,4 @@ Just open `index.html` in a browser — everything runs client-side. (The AI ext
 
 ## Privacy
 
-Your API key and recipes are stored only in your browser's `localStorage` and are sent exclusively to the AI provider you choose.
+Your API key and recipes are stored only in your browser's `localStorage` and are sent exclusively to the AI provider you choose. If you paste a **link**, the page is fetched through a public reader proxy (`r.jina.ai`, fallback `allorigins.win`) — the URL itself is shared with that service. Works with publicly accessible pages and video pages (e.g. YouTube) as long as there is readable text on the page.

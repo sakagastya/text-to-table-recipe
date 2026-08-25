@@ -37,7 +37,7 @@ const I18N = {
     keyPh: 'Paste your key\u2026',
     rawText: 'Raw recipe / blog text',
     rawTextPh: 'Paste the messy blog post here\u2026 The AI will extract only the essentials.',
-    genBtn: 'Generate DSL', p2: 'DSL Code Studio', syntax: 'Syntax',
+    genBtn: 'Create cooking table', p2: 'DSL Code Studio', syntax: 'Syntax',
     p3: 'Appearance', theme: 'Theme', accent: 'Custom accent',
     cellFont: 'Cell font', cellPad: 'Cell padding', resetAccent: 'Reset accent',
     layout: 'Layout', flow: 'Table flow', horizontal: 'Horizontal', vertical: 'Vertical',
@@ -53,7 +53,9 @@ const I18N = {
     cookingOn: 'Cooking mode on \u2014 click steps to mark them done.',
     needText: 'Paste some raw recipe text first.',
     needKey: 'Add your API key first \u2014 it never leaves your browser except to call the provider.',
-    extracting: 'Extracting\u2026', genOk: 'DSL generated \u2014 edit it freely in the studio below.', aiErr: 'AI error: ',
+    extracting: 'Creating table\u2026', genOk: 'Cooking table created \u2014 edit the DSL below.', aiErr: 'AI error: ',
+    translating: 'Translating\u2026', transOk: 'Table translated \u2014 structure unchanged.',
+    regenHint: 'UI language changed. Add your API key and the current table will be translated (structure stays identical).',
     rendering: 'Rendering PNG\u2026', pngOk: 'PNG saved.', pngFail: 'Export failed: ',
     offlineCanvas: 'html2canvas could not be loaded (offline?).',
     movedUp: 'Group moved up.', movedDown: 'Group moved down.',
@@ -69,7 +71,7 @@ const I18N = {
     keyPh: 'Tempel kunci Anda\u2026',
     rawText: 'Teks resep / blog mentah',
     rawTextPh: 'Tempel tulisan blog mentah di sini\u2026 AI hanya mengekstrak yang penting.',
-    genBtn: 'Buat DSL', p2: 'Studio Kode DSL', syntax: 'Sintaks',
+    genBtn: 'Buat tabel masak', p2: 'Studio Kode DSL', syntax: 'Sintaks',
     p3: 'Tampilan', theme: 'Tema', accent: 'Aksen kustom',
     cellFont: 'Font sel', cellPad: 'Padding sel', resetAccent: 'Reset aksen',
     layout: 'Tata Letak', flow: 'Arah tabel', horizontal: 'Horizontal', vertical: 'Vertikal',
@@ -85,7 +87,9 @@ const I18N = {
     cookingOn: 'Mode memasak aktif \u2014 klik langkah untuk menandai selesai.',
     needText: 'Tempel teks resep mentah dulu.',
     needKey: 'Tambahkan kunci API dulu \u2014 kunci hanya dikirim ke penyedia layanan.',
-    extracting: 'Mengekstrak\u2026', genOk: 'DSL dibuat \u2014 sunting bebas di studio di bawah.', aiErr: 'Kesalahan AI: ',
+    extracting: 'Membuat tabel\u2026', genOk: 'Tabel masak dibuat \u2014 sunting DSL di bawah.', aiErr: 'Kesalahan AI: ',
+    translating: 'Menerjemahkan\u2026', transOk: 'Tabel diterjemahkan \u2014 struktur tetap sama.',
+    regenHint: 'Bahasa antarmuka berubah. Tambahkan kunci API dan tabel saat ini akan diterjemahkan (struktur tetap sama).',
     rendering: 'Merender PNG\u2026', pngOk: 'PNG tersimpan.', pngFail: 'Ekspor gagal: ',
     offlineCanvas: 'html2canvas tidak dapat dimuat (offline?).',
     movedUp: 'Grup naik.', movedDown: 'Grup turun.',
@@ -159,6 +163,8 @@ function systemPrompt(lang) {
 Reply with ONLY the DSL below - no markdown fences, no commentary.
 Write ALL text (title, ingredients, actions, group names) in ${l.label}. Keep unit symbols g, mL, tsp, Tbs.
 
+STRUCTURE: keep the table compact, simple and identical regardless of language - fewest columns possible, short actions (2-6 words), [Groups] only for genuinely parallel prep work, one final merge action. The same recipe must yield the same table shape in every language.
+
 DSL RULES:
 - Title: <name>                     first line
 - ## COMPONENT: <name>              optional; starts a separate modular table
@@ -171,6 +177,13 @@ DSL RULES:
 
 EXAMPLE OUTPUT:
 ${l.example}`;
+}
+
+function translatePrompt(lang) {
+  const l = LANGS[lang] || LANGS.en;
+  return `You translate recipe DSL for a cooking-matrix app. Reply with ONLY the translated DSL - no markdown, no commentary.
+Translate ONLY the human-readable words (title, ingredients, actions, group names) into ${l.label}. Keep unit symbols g, mL, tsp, Tbs.
+Keep the DSL structure EXACTLY: same lines, same order, same groups, same merge references, same quantities and units.`;
 }
 
 const $ = (s) => document.querySelector(s);
@@ -749,18 +762,18 @@ async function apiErr(res, label) {
   return label + ' API error ' + res.status + detail;
 }
 
-function geminiPayload(text) {
+function geminiPayload(text, sys) {
   return {
-    systemInstruction: { parts: [{ text: systemPrompt(state.lang) }] },
+    systemInstruction: { parts: [{ text: sys || systemPrompt(state.lang) }] },
     contents: [{ role: 'user', parts: [{ text }] }]
   };
 }
 
-async function geminiGenerate(model, key, text) {
+async function geminiGenerate(model, key, text, sys) {
   const res = await fetch(GEMINI_BASE + '/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(key), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(geminiPayload(text))
+    body: JSON.stringify(geminiPayload(text, sys))
   });
   if (!res.ok) {
     const err = new Error(await apiErr(res, 'Gemini'));
@@ -807,12 +820,12 @@ async function withRetry(fn) {
   }
 }
 
-async function callGemini(text, key) {
+async function callGemini(text, key, sys) {
   const tried = [...new Set([geminiModel, ...GEMINI_PREFERRED].filter(Boolean))];
   let lastErr = null;
   for (const model of tried) {
     try {
-      const out = await withRetry(() => geminiGenerate(model, key, text));
+      const out = await withRetry(() => geminiGenerate(model, key, text, sys));
       geminiModel = model;
       return out;
     } catch (err) {
@@ -822,24 +835,24 @@ async function callGemini(text, key) {
   }
   try {
     const model = await discoverGeminiModel(key);
-    const out = await withRetry(() => geminiGenerate(model, key, text));
-  geminiModel = model;
-  toast(t('modelSwitch') + model);
-  return out;
+    const out = await withRetry(() => geminiGenerate(model, key, text, sys));
+    geminiModel = model;
+    toast(t('modelSwitch') + model);
+    return out;
   } catch (err) {
     throw lastErr || err;
   }
 }
 
-async function callAI(text, provider, key) {
-  if (provider === 'gemini') return callGemini(text, key);
+async function callAI(text, provider, key, sys) {
+  if (provider === 'gemini') return callGemini(text, key, sys);
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: systemPrompt(state.lang) },
+        { role: 'system', content: sys || systemPrompt(state.lang) },
         { role: 'user', content: text }
       ]
     })
@@ -866,6 +879,26 @@ async function generate() {
     render();
     saveState();
     toast(t('genOk'));
+  } catch (err) {
+    toast(t('aiErr') + err.message);
+  }
+  els.generateBtn.disabled = false;
+  els.generateBtn.textContent = t('genBtn');
+}
+
+async function retranslate() {
+  els.generateBtn.disabled = true;
+  els.generateBtn.textContent = t('translating');
+  try {
+    const out = await callAI(state.dsl, state.provider, els.apiKey.value.trim(), translatePrompt(state.lang));
+    const clean = out.replace(/```[a-z]*\s*/gi, '').replace(/```/g, '').trim();
+    if (!clean) throw new Error('empty response');
+    state.dsl = clean;
+    els.dsl.value = clean;
+    loadDone();
+    render();
+    saveState();
+    toast(t('transOk'));
   } catch (err) {
     toast(t('aiErr') + err.message);
   }
@@ -1064,7 +1097,8 @@ function bind() {
     applyI18n();
     render();
     saveState();
-    if (els.rawText.value.trim() && els.apiKey.value.trim()) generate();
+    if (els.apiKey.value.trim() && state.dsl.trim()) retranslate();
+    else if (els.rawText.value.trim() && els.apiKey.value.trim()) generate();
     else toast(t('regenHint'));
   });
   els.orientSel.addEventListener('change', () => { state.orient = els.orientSel.value; render(); saveState(); });

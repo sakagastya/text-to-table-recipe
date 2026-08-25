@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Matrix Kitchen — Cooking for Engineers Generator</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' fill='none' stroke='%23059669' stroke-width='3'/%3E%3Crect x='3' y='3' width='14' height='14' fill='%23059669'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<aside id="sidebar">
+  <div class="brand">
+    <div class="brand-mark">MK</div>
+    <div>
+      <h1>Matrix Kitchen</h1>
+      <p>Recipe text &rarr; editorial cooking matrix</p>
+    </div>
+  </div>
+
+  <section class="panel">
+    <h2 class="panel-title"><span class="num">01</span> AI Auto-Extract</h2>
+    <label class="field">
+      <span>Provider</span>
+      <select id="provider">
+        <option value="gemini">Google Gemini</option>
+        <option value="openai">OpenAI</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>API key <em>(stored only in your browser)</em></span>
+      <input type="password" id="apiKey" placeholder="Paste your key…" autocomplete="off">
+    </label>
+    <label class="field">
+      <span>Raw recipe / blog text</span>
+      <textarea id="rawText" rows="6" placeholder="Paste the messy blog post here… The AI will extract only the essentials."></textarea>
+    </label>
+    <button id="generateBtn" class="btn primary">Generate DSL</button>
+  </section>
+
+  <section class="panel grow">
+    <h2 class="panel-title"><span class="num">02</span> DSL Code Studio</h2>
+    <label class="field">
+      <span>Syntax</span>
+      <div class="syntax-legend">
+        <code>Title: Name</code><code>## COMPONENT: Name</code><code>[Group]</code>
+        <code>- ingredient</code><code>&gt; action</code><code>&gt; (wait)</code><code>&gt; action (Group A, Group B)</code>
+      </div>
+    </label>
+    <textarea id="dslInput" spellcheck="false" aria-label="DSL editor"></textarea>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title"><span class="num">03</span> Appearance</h2>
+    <div class="field">
+      <span>Theme</span>
+      <div class="swatches" id="swatches"></div>
+    </div>
+    <label class="field">
+      <span>Custom accent</span>
+      <input type="color" id="accentPicker" value="#059669">
+    </label>
+    <label class="field range">
+      <span>Cell font <output id="fontOut">14 px</output></span>
+      <input type="range" id="fontRange" min="11" max="20" step="1">
+    </label>
+    <label class="field range">
+      <span>Cell padding <output id="padOut">10 px</output></span>
+      <input type="range" id="padRange" min="4" max="22" step="1">
+    </label>
+    <button id="resetAccent" class="btn ghost subtle">Reset accent</button>
+  </section>
+
+  <footer class="sidebar-foot">
+    <p>100% client-side. No backend, no build step. Ready for GitHub Pages.</p>
+  </footer>
+</aside>
+
+<main id="main">
+  <header id="topbar">
+    <div class="tool-group">
+      <label class="tool">
+        <span>Portions</span>
+        <select id="portion">
+          <option value="0.5">&frac12;&times;</option>
+          <option value="1" selected>1&times;</option>
+          <option value="2">2&times;</option>
+          <option value="5">5&times;</option>
+        </select>
+      </label>
+      <label class="tool switch-tool">
+        <span>Cooking mode</span>
+        <span class="switch">
+          <input type="checkbox" id="cookingToggle">
+          <span class="knob"></span>
+        </span>
+      </label>
+    </div>
+    <div class="tool-group">
+      <button id="shopBtn" class="btn">Shopping list</button>
+      <button id="pngBtn" class="btn primary">Save as PNG</button>
+    </div>
+  </header>
+
+  <div id="canvas" aria-live="polite"></div>
+</main>
+
+<div id="modalBackdrop" class="modal-backdrop hidden">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-head">
+      <h3 id="modalTitle">Shopping List</h3>
+      <button id="modalClose" class="icon-btn" aria-label="Close">&times;</button>
+    </div>
+    <p class="modal-note">Scaled to <strong id="modalPortion">1&times;</strong> &middot; duplicates consolidated &middot; metric units enforced</p>
+    <ul id="shopList"></ul>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

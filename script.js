@@ -169,7 +169,7 @@ function systemPrompt(lang) {
 Reply with ONLY the DSL below - no markdown fences, no commentary.
 Write ALL text (title, ingredients, actions, group names) in ${l.label}. Keep unit symbols g, mL, tsp, Tbs.
 
-STRUCTURE: keep the table compact, simple and identical regardless of language - fewest columns possible, short actions (2-6 words), [Groups] only for genuinely parallel prep work, one final merge action. The same recipe must yield the same table shape in every language.
+STRUCTURE: keep the table compact, simple and identical regardless of language - fewest columns possible, short actions (2-6 words), [Groups] only for genuinely parallel prep work. Never translate DSL keywords: the hold-back marker must stay exactly (wait), never (tunggu). The LAST action must merge ALL groups, e.g. "> masak (A, B, C)", so no branch dangles with empty stretched space. The same recipe must yield the same table shape in every language.
 
 SOURCE: use ONLY recipe facts explicitly present in the user text (ingredients with amounts, cooking steps). Ignore ads, video titles, suggestions, related links, comments and navigation. If the text contains neither ingredients nor steps, reply with exactly: NO_RECIPE. If only an ingredient list is present, still build the table from those ingredients and end with one simple cook-or-serve action.
 
@@ -339,7 +339,7 @@ function parseDSL(src) {
       ensureComp().lines.push({
         type: 'action',
         body,
-        wait: /^\(wait\)$/i.test(body),
+        wait: /^\((?:wait|tunggu)\)$/i.test(body),
         groupsRaw: gm ? gm[1] : null
       });
       continue;

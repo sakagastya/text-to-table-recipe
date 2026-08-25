@@ -543,6 +543,27 @@ registerCase('Extra: YouTube description extraction from page HTML', (ok) => {
   ok(empty.desc === '' && empty.title === '', 'missing shortDescription yields empty meta');
 });
 
+/* ============================================================
+   CASE 9 — Translated hold-back marker + full final merge
+   ============================================================ */
+
+registerCase('Case 9: Translated hold-back marker (tunggu)', (ok) => {
+  E.setPortion(1); E.resetDone();
+  const dsl = 'Title: T\n[A]\n- a1\n- a2\n> (tunggu)\n> cook a\n[B]\n- b1\n> heat b\n> mix all (A, B)';
+  const { models, html } = build(dsl);
+  const m = models[0];
+
+  ok(!html.includes('tunggu'), '(tunggu) treated as hold-back, not rendered as a cell');
+  const cookA = findCell(m, 'action', 'cook a');
+  ok(!!cookA && cookA._col === 1, `hold-back pushed "cook a" to column 1 (got ${cookA && cookA._col})`);
+  const mix = findCell(m, 'action', 'mix all');
+  ok(!!mix && mix.rowspan === 3 && mix._col === 2, `final merge spans 3 rows at column 2 (got rowspan ${mix && mix.rowspan}, col ${mix && mix._col})`);
+  ok(!html.includes('cf-empty'), 'no gaps in the table');
+
+  const upper = build('Title: U\n[A]\n- x\n> (WAIT)\n> do x');
+  ok(!upper.html.includes('WAIT'), '(WAIT) recognized case-insensitively');
+});
+
 /* ---------------- report ---------------- */
 
 const line = '\u2550'.repeat(74);

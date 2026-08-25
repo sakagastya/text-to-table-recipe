@@ -568,21 +568,77 @@ function closeShopping() { els.modalBackdrop.classList.add('hidden'); }
 
 /* ---------------- AI extraction ---------------- */
 
-async function callAI(text, provider, key) {
-  if (provider === 'gemini') {
-    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + encodeURIComponent(key), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: 'user', parts: [{ text }] }]
-      })
-    });
-    if (!res.ok) throw new Error('Gemini API error ' + res.status);
-    const data = await res.json();
-    const parts = data.candidates?.[0]?.content?.parts || [];
-    return parts.map((p) => p.text || '').join('');
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const GEMINI_PREFERRED = ['gemini-3.5-flash', 'gemini-3.6-flash'];
+let geminiModel = '';
+
+async function apiErr(res, label) {
+  let detail = '';
+  try { detail = ' \u2014 ' + String(await res.text()).replace(/\s+/g, ' ').trim().slice(0, 160); } catch (e) { /* body unavailable */ }
+  return label + ' API error ' + res.status + detail;
+}
+
+function geminiPayload(text) {
+  return {
+    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [{ role: 'user', parts: [{ text }] }]
+  };
+}
+
+async function geminiGenerate(model, key, text) {
+  const res = await fetch(GEMINI_BASE + '/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(key), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(geminiPayload(text))
+  });
+  if (!res.ok) {
+    const err = new Error(await apiErr(res, 'Gemini'));
+    err.status = res.status;
+    throw err;
   }
+  const data = await res.json();
+  return (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+}
+
+async function discoverGeminiModel(key) {
+  const res = await fetch(GEMINI_BASE + '/models?key=' + encodeURIComponent(key));
+  if (!res.ok) throw new Error(await apiErr(res, 'Gemini'));
+  const { models = [] } = await res.json();
+  const usable = models
+    .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
+    .map((m) => String(m.name || '').replace(/^models\//, ''))
+    .filter((n) => /^gemini-.+(flash|pro)/.test(n))
+    .filter((n) => !/(image|tts|audio|video|embedding|native|live|thinking)/i.test(n))
+    .sort((a, b) => {
+      const la = /-latest$/.test(a) ? 1 : 0;
+      const lb = /-latest$/.test(b) ? 1 : 0;
+      if (la !== lb) return lb - la;
+      return b.localeCompare(a, undefined, { numeric: true });
+    });
+  if (!usable.length) throw new Error('This Gemini API key has no text-generation models available.');
+  return usable[0];
+}
+
+async function callGemini(text, key) {
+  const tried = [...new Set([geminiModel, ...GEMINI_PREFERRED].filter(Boolean))];
+  for (const model of tried) {
+    try {
+      const out = await geminiGenerate(model, key, text);
+      geminiModel = model;
+      return out;
+    } catch (err) {
+      if (err.status !== 404) throw err;
+    }
+  }
+  const model = await discoverGeminiModel(key);
+  const out = await geminiGenerate(model, key, text);
+  geminiModel = model;
+  toast('Gemini model switched to ' + model + '.');
+  return out;
+}
+
+async function callAI(text, provider, key) {
+  if (provider === 'gemini') return callGemini(text, key);
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
@@ -594,7 +650,7 @@ async function callAI(text, provider, key) {
       ]
     })
   });
-  if (!res.ok) throw new Error('OpenAI API error ' + res.status);
+  if (!res.ok) throw new Error(await apiErr(res, 'OpenAI'));
   const data = await res.json();
   return data.choices?.[0]?.message?.content || '';
 }
